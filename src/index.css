@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-brand-primary: #3291B6; /* Teal/Blue from image */
+  --color-brand-secondary: #EAF4F7;
+  --color-brand-dark: #1F2937;
+  --color-brand-light: #F9FAFB;
+  
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+}
+
+@layer base {
+  body {
+    @apply font-sans text-brand-dark bg-white;
+  }
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+}
+
+.hero-bg {
+  background: 
+    radial-gradient(circle at 10% 20%, rgba(50, 145, 182, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(50, 145, 182, 0.08) 0%, transparent 40%),
+    linear-gradient(to bottom, #F9FAFB 0%, #FFFFFF 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-bg::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: url('https://picsum.photos/seed/mountains/1920/1080?blur=10') no-repeat bottom;
+  background-size: cover;
+  opacity: 0.1;
+  filter: grayscale(100%) brightness(1.5);
+  mask-image: linear-gradient(to top, black, transparent);
+}
