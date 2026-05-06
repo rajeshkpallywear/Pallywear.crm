@@ -12,7 +12,7 @@ import {
 import { Button } from '../components/Button';
 import { useNavigate } from 'react-router-dom';
 import LeadManager from '../components/LeadManager';
-import ProfileSettings from '../components/ProfileSetting';
+import ProfileSetting from '../components/ProfileSetting';
 import Logo from '../components/Logo';
 import { cn } from '../lib/utils';
 
@@ -279,7 +279,7 @@ export default function Dashboard() {
           )}
         </div>
       </main>
-      <ProfileSettings isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
+      <ProfileSetting isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
     </div>
   );
 }
