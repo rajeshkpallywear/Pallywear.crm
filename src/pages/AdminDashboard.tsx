@@ -15,6 +15,7 @@ import { Button } from '../components/Button';
 import { useNavigate } from 'react-router-dom';
 import LeadManager from '../components/LeadManager';
 import ProfileSettings from '../components/ProfileSetting';
+import Logo from '../components/Logo';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
@@ -60,11 +61,8 @@ export default function AdminDashboard() {
     <div className="flex bg-brand-light min-h-screen">
       {/* Sidebar */}
       <aside className="w-64 bg-brand-dark flex flex-col fixed inset-y-0 h-full z-40">
-        <div className="p-6 flex items-center gap-2">
-          <div className="w-8 h-8 bg-brand-primary rounded-lg flex items-center justify-center">
-            <Layout className="text-white w-5 h-5" />
-          </div>
-          <span className="font-bold text-lg text-white">Admin Hub</span>
+        <div className="p-6 border-b border-white/5 flex items-center justify-center">
+          <Logo inverted />
         </div>
 
         <nav className="p-4 space-y-1">

@@ -3,18 +3,14 @@ import { Button } from '../components/Button';
 import { ChevronDown, Play, ArrowRight, Layout } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
+import Logo from '../components/Logo';
 
 export default function Store() {
   return (
     <div className="min-height-screen hero-bg">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4 flex items-center justify-between backdrop-blur-md bg-white/30 border-bottom border-white/20">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-brand-dark rounded-xl flex items-center justify-center">
-            <Layout className="text-white w-6 h-6" />
-          </div>
-          <span className="text-xl font-bold tracking-tight text-brand-dark">Pallywear</span>
-        </div>
+        <Logo />
 
         <nav className="hidden md:flex items-center gap-8">
           {['Product', 'Resource', 'Pricing', 'Features'].map((item) => (

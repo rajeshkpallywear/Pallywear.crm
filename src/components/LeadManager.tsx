@@ -22,6 +22,8 @@ export default function LeadManager({ hideAdd = false }: LeadManagerProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -98,11 +100,18 @@ export default function LeadManager({ hideAdd = false }: LeadManagerProps) {
     exportToExcel(exportData, 'Leads_Report');
   };
 
-  const filteredLeads = leads.filter(l =>
-    l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    l.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    l.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredLeads = leads.filter(l => {
+    const query = searchQuery.toLowerCase();
+    const matchesSearch = l.name.toLowerCase().includes(query) ||
+      l.companyName.toLowerCase().includes(query) ||
+      l.id.toLowerCase().includes(query) ||
+      (l.createdByName && l.createdByName.toLowerCase().includes(query));
+
+    const matchesStartDate = !startDate || l.entryDate >= startDate;
+    const matchesEndDate = !endDate || l.entryDate <= endDate;
+
+    return matchesSearch && matchesStartDate && matchesEndDate;
+  });
 
   const canManage = (lead: Lead) => {
     if (user?.role === 'admin') return true;
@@ -113,15 +122,43 @@ export default function LeadManager({ hideAdd = false }: LeadManagerProps) {
     <div className="space-y-6">
       {/* Header Actions */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search leads by name or company..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary"
-          />
+        <div className="flex flex-wrap items-center gap-4 flex-1">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search leads or staff..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary"
+            />
+          </div>
+          <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-xl px-3 py-1.5 shadow-sm">
+            <Calendar className="w-4 h-4 text-gray-400" />
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="text-xs bg-transparent border-none focus:ring-0 p-0 text-gray-600"
+              placeholder="Start Date"
+            />
+            <span className="text-gray-300">to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="text-xs bg-transparent border-none focus:ring-0 p-0 text-gray-600"
+              placeholder="End Date"
+            />
+            {(startDate || endDate) && (
+              <button
+                onClick={() => { setStartDate(''); setEndDate(''); }}
+                className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" size="md" className="bg-white gap-2" onClick={handleExport}>
@@ -140,6 +177,7 @@ export default function LeadManager({ hideAdd = false }: LeadManagerProps) {
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
             <tr>
+              <th className="px-6 py-4">Staff</th>
               <th className="px-6 py-4">Lead Info</th>
               <th className="px-6 py-4">Company & GST</th>
               <th className="px-6 py-4">Type</th>
@@ -151,6 +189,14 @@ export default function LeadManager({ hideAdd = false }: LeadManagerProps) {
           <tbody className="divide-y divide-gray-100">
             {filteredLeads.map((lead) => (
               <tr key={lead.id} className="hover:bg-gray-50/30 transition-colors group">
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-brand-secondary flex items-center justify-center text-xs font-bold text-brand-primary">
+                      {lead.createdByName?.charAt(0) || 'U'}
+                    </div>
+                    <span className="text-xs text-gray-600 font-medium">{lead.createdByName}</span>
+                  </div>
+                </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className={cn(

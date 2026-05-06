@@ -13,6 +13,7 @@ import { Button } from '../components/Button';
 import { useNavigate } from 'react-router-dom';
 import LeadManager from '../components/LeadManager';
 import ProfileSettings from '../components/ProfileSetting';
+import Logo from '../components/Logo';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -39,11 +40,8 @@ export default function Dashboard() {
     <div className="flex bg-brand-light min-h-screen">
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed inset-y-0 h-full overflow-hidden">
-        <div className="p-6 flex items-center gap-2 border-b border-gray-50">
-          <div className="w-8 h-8 bg-brand-dark rounded-lg flex items-center justify-center">
-            <Layout className="text-white w-5 h-5" />
-          </div>
-          <span className="font-bold text-lg">Pallywear</span>
+        <div className="p-6 border-b border-gray-50 flex items-center justify-center">
+          <Logo />
         </div>
 
         <nav className="p-4 space-y-1">
