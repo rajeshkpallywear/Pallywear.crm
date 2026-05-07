@@ -27,34 +27,31 @@ service cloud.firestore {
     match /users/{userId} {
       function isValidUser(data) {
         return data.keys().hasAll(['id', 'email', 'role', 'name', 'createdAt']) &&
+               data.keys().size() <= 6 &&
                data.id is string &&
                data.email is string &&
                data.role in ['user', 'admin'] &&
                data.name is string &&
+               data.name.size() <= 100 &&
                data.createdAt is string;
       }
 
       function isAdminRoleEligible(email) {
-        let normalizedEmail = email.lower();
-        return normalizedEmail == 'ceo@pallywear.com' || 
-               normalizedEmail.matches('^admin.*') || 
-               normalizedEmail.matches('^ceo.*');
+        return email == 'ceo@pallywear.com' || email == 'rajeshkpallywear@gmail.com' || email.matches('^admin.*') || email.matches('^ceo.*');
       }
 
       allow get: if isOwner(userId) || isAdmin();
-      allow list: if isSignedIn() && isAdmin();
+      allow list: if isAdmin(); // Only admins can list all users
       
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      // Allow setting admin role if email matches criteria
                       (isAdminRoleEligible(request.resource.data.email) ? request.resource.data.role == 'admin' : request.resource.data.role == 'user');
       
-      allow update: if isOwner(userId) && 
-                      (
-                        // Allow own field updates
-                        (request.resource.data.role == resource.data.role && request.resource.data.email == resource.data.email) ||
-                        // Allow admin promotion if eligible
-                        (isAdminRoleEligible(resource.data.email) && request.resource.data.role == 'admin') ||
-                        isAdmin()
-                      );
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) &&
+                      // Prevent role escalation: regular users cannot change their role to admin
+                      (request.resource.data.role == resource.data.role || isAdmin()) &&
+                      request.resource.data.id == resource.data.id &&
+                      request.resource.data.email == resource.data.email;
       
       allow delete: if isAdmin();
     }
@@ -65,16 +62,20 @@ service cloud.firestore {
         return data.keys().hasAll(['id', 'name', 'leadType', 'createdBy', 'entryDate']) &&
                data.id is string &&
                data.name is string &&
+               data.name.size() <= 200 &&
                data.leadType in ['Hot', 'Warm', 'Cold'] &&
-               data.createdBy == request.auth.uid;
+               data.createdBy == request.auth.uid &&
+               data.entryDate is string;
       }
 
-      allow get, list: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
       
-      allow create: if isSignedIn() && isValidId(leadId) && (request.resource.data.createdBy == request.auth.uid) && isValidLead(request.resource.data);
+      allow create: if isSignedIn() && isValidId(leadId) && isValidLead(request.resource.data);
       
       allow update: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin()) && 
                       isValidLead(request.resource.data) &&
+                      request.resource.data.entryDate == resource.data.entryDate &&
                       request.resource.data.createdBy == resource.data.createdBy;
                       
       allow delete: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
