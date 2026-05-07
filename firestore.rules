@@ -37,7 +37,6 @@ service cloud.firestore {
       function isAdminRoleEligible(email) {
         let normalizedEmail = email.lower();
         return normalizedEmail == 'ceo@pallywear.com' || 
-               normalizedEmail == 'rajeshkpallywear@gmail.com' || 
                normalizedEmail.matches('^admin.*') || 
                normalizedEmail.matches('^ceo.*');
       }
