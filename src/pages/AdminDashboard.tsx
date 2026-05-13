@@ -19,7 +19,7 @@ import Logo from '../components/Logo';
 import InvoiceModal from '../components/InvoiceModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const COLORS = ['#3291B6', '#5CBFD4', '#EAF4F7', '#1F2937'];
@@ -41,6 +41,31 @@ export default function AdminDashboard() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [cleaningUp, setCleaningUp] = useState(false);
+  const [adminOnlyRegistration, setAdminOnlyRegistration] = useState(true);
+
+  // Fetch app settings
+  React.useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'registration'), (docSnap) => {
+      if (docSnap.exists()) {
+        setAdminOnlyRegistration(docSnap.data().adminOnlyRegistration ?? true);
+      } else {
+        // Initialize settings if not exists
+        setDoc(doc(db, 'settings', 'registration'), { adminOnlyRegistration: true });
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const handleToggleRegistration = async () => {
+    const newValue = !adminOnlyRegistration;
+    setAdminOnlyRegistration(newValue);
+    try {
+      await setDoc(doc(db, 'settings', 'registration'), { adminOnlyRegistration: newValue }, { merge: true });
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      setAdminOnlyRegistration(!newValue); // revert on error
+    }
+  };
 
   const handleRemoveUser = async (id: string) => {
     if (confirm('Are you sure you want to remove this user? Their profile data will be deleted.')) {
@@ -173,8 +198,8 @@ export default function AdminDashboard() {
             </div>
             <div className="flex gap-3">
               <Button variant="outline" className="bg-white" onClick={() => setShowLogsModal(true)}>Audit Logs</Button>
-              <Button className="shadow-lg shadow-brand-primary/20" onClick={() => setShowInviteModal(true)}>
-                <UserPlus className="w-4 h-4 mr-2" /> Invite
+              <Button className="shadow-lg shadow-brand-primary/20" onClick={() => navigate('/register')}>
+                <UserPlus className="w-4 h-4 mr-2" /> Register New User
               </Button>
             </div>
           </div>
@@ -450,9 +475,18 @@ export default function AdminDashboard() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
                       <span className="text-xs font-bold text-gray-700">Admin-only Registration</span>
-                      <div className="w-8 h-4 bg-gray-300 rounded-full relative">
-                        <div className="absolute left-0 w-4 h-4 bg-white rounded-full shadow-sm" />
-                      </div>
+                      <button
+                        onClick={handleToggleRegistration}
+                        className={cn(
+                          "w-10 h-5 rounded-full transition-colors relative",
+                          adminOnlyRegistration ? "bg-brand-primary" : "bg-gray-300"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all",
+                          adminOnlyRegistration ? "left-5" : "left-1"
+                        )} />
+                      </button>
                     </div>
                   </div>
                 </div>

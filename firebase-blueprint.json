@@ -1,5 +1,15 @@
 {
   "entities": {
+    "AppSettings": {
+      "title": "App Settings",
+      "description": "Global application configuration.",
+      "type": "object",
+      "properties": {
+        "adminOnlyRegistration": {
+          "type": "boolean"
+        }
+      }
+    },
     "User": {
       "title": "User",
       "description": "User profile information and role.",
@@ -183,7 +193,7 @@
           "type": "string",
           "format": "date-time"
         },
-        "bankSwiftCode": {
+        "bankIfscCode": {
           "type": "string"
         },
         "bankAccountNumber": {
@@ -215,6 +225,10 @@
     "invoices/{invoiceId}": {
       "schema": "Invoice",
       "description": "Invoice records."
+    },
+    "settings/{settingId}": {
+      "schema": "AppSettings",
+      "description": "Global application configuration settings."
     }
   }
 }

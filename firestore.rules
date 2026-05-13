@@ -101,5 +101,11 @@ service cloud.firestore {
                       request.resource.data.createdBy == resource.data.createdBy;
       allow delete: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
+
+    // App Settings
+    match /settings/{settingId} {
+      allow read: if true; // Publicly readable for registration check
+      allow write: if isAdmin();
+    }
   }
 }

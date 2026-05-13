@@ -12,7 +12,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const { login, googleLogin, user: authUser } = useAuth();
+  const { login, googleLogin, user: authUser, adminOnlyRegistration } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -33,7 +33,7 @@ export default function Login() {
       const currentUser = auth.currentUser;
       if (currentUser) {
         const email = (currentUser.email || '').toLowerCase();
-        const isAdmin = email === 'ceo@pallywear.com' || email.startsWith('admin') || email.startsWith('ceo');
+        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email === 'daniel.smpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
         navigate(isAdmin ? '/admin' : '/dashboard');
       } else {
         navigate('/dashboard');
@@ -55,14 +55,14 @@ export default function Login() {
       const result = await login(email, password);
       if (result.success) {
         const normalizedEmail = email.toLowerCase();
-        const isAdmin = normalizedEmail === 'ceo@pallywear.com' || normalizedEmail.startsWith('admin') || normalizedEmail.startsWith('ceo');
+        const isAdmin = normalizedEmail === 'ceo@pallywear.com' || normalizedEmail === 'rajeshkpallywear@gmail.com' || normalizedEmail === 'daniel.smpallywear@gmail.com' || normalizedEmail.startsWith('admin') || normalizedEmail.startsWith('ceo');
         navigate(isAdmin ? '/admin' : '/dashboard');
       } else {
         let message = result.message || 'Login failed';
         if (message.includes('auth/operation-not-allowed')) {
           message = 'Email/Password login is not enabled in Firebase Console. Please enable it in Authentication > Sign-in method.';
         } else if (message.includes('auth/invalid-credential')) {
-          message = 'Invalid email or password. If you haven\'t registered yet, please enable the registration link.';
+          message = 'Invalid email or password. If you haven\'t registered yet, please contact an administrator.';
         }
         setError(message);
       }
@@ -160,12 +160,14 @@ export default function Login() {
           </div>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-8">
-          Don't have an account?{' '}
-          <Link to="/register" className="font-bold text-brand-primary hover:underline ml-1">
-            Register here
-          </Link>
-        </p>
+        {!adminOnlyRegistration && (
+          <p className="text-center text-sm text-gray-500 mt-8">
+            Don't have an account?{' '}
+            <Link to="/register" className="font-bold text-brand-primary hover:underline ml-1">
+              Sign up for free
+            </Link>
+          </p>
+        )}
       </motion.div>
     </div>
   );

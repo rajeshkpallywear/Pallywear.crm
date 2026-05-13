@@ -85,6 +85,7 @@ interface AuthContextType {
   deleteUser: (id: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
+  adminOnlyRegistration: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -102,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [registeredUsers, setRegisteredUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [adminOnlyRegistration, setAdminOnlyRegistration] = useState(true);
 
   // Validate Connection to Firestore
   useEffect(() => {
@@ -115,6 +117,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     testConnection();
+
+    // Fetch and listen to global settings
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'registration'), (snapshot) => {
+      if (snapshot.exists()) {
+        setAdminOnlyRegistration(snapshot.data().adminOnlyRegistration ?? true);
+      }
+    });
+
+    return () => unsubSettings();
   }, []);
 
   useEffect(() => {
@@ -289,7 +300,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       updateProfile,
       deleteUser,
-      loading
+      loading,
+      adminOnlyRegistration
     }}>
       {children}
     </AuthContext.Provider>

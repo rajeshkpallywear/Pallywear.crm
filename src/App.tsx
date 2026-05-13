@@ -32,6 +32,8 @@ const ProtectedRoute = ({ children, adminOnly = false }: { children: React.React
 };
 
 function AppRoutes() {
+  const { adminOnlyRegistration } = useAuth();
+
   return (
     <Router>
       <Routes>
@@ -41,7 +43,14 @@ function AppRoutes() {
 
         {/* Auth */}
         <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route
+          path="/register"
+          element={
+            <ProtectedRoute adminOnly={adminOnlyRegistration}>
+              <Register />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected Routes */}
         <Route
