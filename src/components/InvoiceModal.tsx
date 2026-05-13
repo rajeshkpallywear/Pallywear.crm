@@ -310,7 +310,7 @@ export default function InvoiceModal({ invoice, isOpen, onClose }: InvoiceModalP
                                     </div>
                                     <div className="h-24 flex items-end justify-center mb-2 px-4">
                                         <span className="font-['Dancing_Script',_cursive] text-6xl text-gray-800 -rotate-3 select-none translate-x-4 opacity-90">
-                                            {invoice.companySignature || 'V.Edelt.'}
+                                            {invoice.companySignature || 'V.Edeilt'}
                                         </span>
                                     </div>
                                     <div className="w-64 h-px bg-gray-300" />

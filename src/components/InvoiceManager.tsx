@@ -34,7 +34,7 @@ export default function InvoiceManager() {
         taxRate: 5,
         shippingCost: 0,
         discountRate: 20,
-        companySignature: 'V.Edelt.',
+        companySignature: 'V.Edeilt',
         bankIFSCCode: 'HDFC0008964',
         bankAccountNumber: '50202110682524',
     });
@@ -160,7 +160,7 @@ export default function InvoiceManager() {
             leadId: newInvoiceData.leadId,
             createdBy: user.id,
             createdByName: user.name,
-            companySignature: newInvoiceData.companySignature || 'V.Edelt',
+            companySignature: newInvoiceData.companySignature || 'V.Edeilt',
             bankIFSCCode: newInvoiceData.bankIFSCCode || 'HDFC0008964',
             bankAccountNumber: newInvoiceData.bankAccountNumber || '50202110682524',
         };
@@ -185,7 +185,7 @@ export default function InvoiceManager() {
                 taxRate: 5,
                 shippingCost: 0,
                 discountRate: 20,
-                companySignature: 'V.Edelt.',
+                companySignature: 'V.Edeilt',
                 bankIFSCCode: 'HDFC0008964',
                 bankAccountNumber: '50202110682524',
             });
