@@ -182,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const login = async (email: string, password: string) => {
-    let normalizedEmail = email.toLowerCase();
+    let normalizedEmail = email.trim().toLowerCase();
     if (normalizedEmail === 'admin') {
       normalizedEmail = 'ceo@pallywear.com';
     }
@@ -191,6 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signInWithEmailAndPassword(auth, normalizedEmail, password);
       return { success: true };
     } catch (error: any) {
+      console.error('Login error:', error.code, error.message);
       return { success: false, message: error.message || 'Login failed' };
     }
   };
@@ -233,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (name: string, email: string, password: string) => {
-    const normalizedEmail = email.toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
@@ -245,8 +246,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: firebaseUser.uid,
         email: normalizedEmail,
         role: role as 'user' | 'admin',
-        name,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=3291B6&color=fff`,
+        name: name.trim(),
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=3291B6&color=fff`,
         createdAt: new Date().toISOString()
       };
 

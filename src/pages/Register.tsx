@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '../components/Button';
-import { Layout, Mail, Lock, User, CheckCircle2 } from 'lucide-react';
+import { Layout, Mail, Lock, User, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { auth } from '../lib/firebase';
@@ -11,6 +11,8 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const { register, googleLogin, logout } = useAuth();
   const navigate = useNavigate();
@@ -22,7 +24,7 @@ export default function Register() {
       const currentUser = auth.currentUser;
       if (currentUser) {
         const email = (currentUser.email || '').toLowerCase();
-        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
+        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email === 'daniel.smpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
         navigate(isAdmin ? '/admin' : '/dashboard');
       } else {
         navigate('/dashboard');
@@ -36,11 +38,21 @@ export default function Register() {
     e.preventDefault();
     setError('');
 
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return;
+    }
+
     try {
       const result = await register(name, email, password);
       if (result.success) {
         await logout();
-        navigate('/login', { state: { message: 'Registration successful! Please sign in to continue.' } });
+        navigate('/login', { state: { message: `Successfully registered ${email}! Please sign in with the new credentials.` } });
       } else {
         let message = result.message || 'Registration failed';
         if (message.includes('auth/email-already-in-use')) {
@@ -66,8 +78,8 @@ export default function Register() {
       >
         <div className="flex flex-col items-center mb-8">
           <Logo iconOnly className="mb-4 scale-125" />
-          <h2 className="text-2xl font-bold text-brand-dark tracking-tight">Create your account</h2>
-          <p className="text-gray-500 text-sm mt-1">Start your 14-day free trial today</p>
+          <h2 className="text-2xl font-bold text-brand-dark tracking-tight">Register New User</h2>
+          <p className="text-gray-500 text-sm mt-1">Add a new staff member to the platform</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -108,10 +120,33 @@ export default function Register() {
             <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
               <Lock className="w-4 h-4 opacity-70" /> Password
             </label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-sm pr-12"
+                placeholder="••••••••"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-brand-primary transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 opacity-70" /> Confirm Password
+            </label>
             <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              type={showPassword ? "text" : "password"}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-sm"
               placeholder="••••••••"
               required
@@ -130,44 +165,18 @@ export default function Register() {
           </div>
 
           <Button type="submit" className="w-full h-11 text-base shadow-lg shadow-brand-primary/20">
-            Create account
+            Create Staff Account
           </Button>
 
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-100"></div>
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="px-2 bg-white text-gray-400">Or continue with</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Button
-              type="button"
-              variant="outline"
-              className="bg-white gap-2 text-sm h-10"
-              onClick={handleGoogleLogin}
-            >
-              <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" /> Google
-            </Button>
-            <Button variant="outline" className="bg-white gap-2 text-sm h-10">
-              <Layout className="w-4 h-4 text-gray-600" /> Microsoft
-            </Button>
+          <div className="bg-amber-50 border border-amber-100 p-3 rounded-xl text-amber-700 text-[10px] font-medium leading-relaxed">
+            Note: For technical reasons, registering a new user will sign you out as admin. You will need to log back in.
           </div>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-8">
-          Already have an account?{' '}
-          <Link to="/login" className="font-bold text-brand-primary hover:underline ml-1">
-            Sign in
+        <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col items-center gap-4">
+          <Link to="/admin" className="text-sm font-bold text-brand-primary hover:underline">
+            ← Return to Admin Panel
           </Link>
-        </p>
-
-        <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-center gap-6">
-          {['Intercom', 'Linear', 'Loom'].map(brand => (
-            <span key={brand} className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{brand}</span>
-          ))}
         </div>
       </motion.div>
     </div>

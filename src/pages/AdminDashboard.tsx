@@ -73,6 +73,18 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleToggleUserRole = async (userId: string, currentRole: string) => {
+    const newRole = currentRole === 'admin' ? 'user' : 'admin';
+    if (confirm(`Are you sure you want to change this user's role to ${newRole}?`)) {
+      try {
+        await setDoc(doc(db, 'users', userId), { role: newRole }, { merge: true });
+      } catch (error) {
+        console.error('Error updating user role:', error);
+        alert('Failed to update user role. Permissions might be restricted.');
+      }
+    }
+  };
+
   const handleClearAllLeads = async () => {
     if (confirm('Are you sure you want to PERMANENTLY DELETE ALL LEADS from the database? This cannot be undone.')) {
       setCleaningUp(true);
@@ -413,12 +425,15 @@ export default function AdminDashboard() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={cn(
-                          "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border",
-                          u.role === 'admin' ? "bg-purple-50 text-purple-700 border-purple-100" : "bg-gray-50 text-gray-600 border-gray-100"
-                        )}>
+                        <button
+                          onClick={() => handleToggleUserRole(u.id, u.role)}
+                          className={cn(
+                            "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border transition-all hover:scale-105 active:scale-95",
+                            u.role === 'admin' ? "bg-purple-50 text-purple-700 border-purple-100" : "bg-gray-50 text-gray-600 border-gray-100"
+                          )}
+                        >
                           {u.role}
-                        </span>
+                        </button>
                       </td>
                       <td className="px-6 py-4 text-gray-500 text-xs text-nowrap">
                         {new Date(u.createdAt).toLocaleDateString()}
