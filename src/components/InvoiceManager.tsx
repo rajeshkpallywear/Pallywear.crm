@@ -160,7 +160,7 @@ export default function InvoiceManager() {
             leadId: newInvoiceData.leadId,
             createdBy: user.id,
             createdByName: user.name,
-            companySignature: newInvoiceData.companySignature || 'Rajesh K.',
+            companySignature: newInvoiceData.companySignature || 'V.Edelt',
             bankIFSCCode: newInvoiceData.bankIFSCCode || 'HDFC0008964',
             bankAccountNumber: newInvoiceData.bankAccountNumber || '50202110682524',
         };
@@ -185,8 +185,8 @@ export default function InvoiceManager() {
                 taxRate: 5,
                 shippingCost: 0,
                 discountRate: 20,
-                companySignature: 'Rajesh K.',
-                bankIfscCode: 'HDFC0008964',
+                companySignature: 'V.Edelt.',
+                bankIFSCCode: 'HDFC0008964',
                 bankAccountNumber: '50202110682524',
             });
         } catch (err: any) {

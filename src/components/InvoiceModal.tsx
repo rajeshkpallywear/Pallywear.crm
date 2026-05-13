@@ -22,28 +22,52 @@ export default function InvoiceModal({ invoice, isOpen, onClose }: InvoiceModalP
         if (!element) return;
 
         try {
-            // Force the element to be fully rendered for capture
+            // Use standard pixels for A4 width to ensure consistent capture
+            const standardWidth = 1000;
+
             const canvas = await html2canvas(element, {
-                scale: 2,
+                scale: 2, // 2 is usually enough for prints
                 useCORS: true,
                 logging: false,
                 backgroundColor: '#ffffff',
-                width: 800, // Standard A4-ish width for capture
+                windowWidth: standardWidth, // Virtual window width to prevent responsive shifts
                 onclone: (clonedDoc) => {
                     const el = clonedDoc.querySelector('[data-invoice-container]') as HTMLElement;
                     if (el) {
+                        el.style.width = `${standardWidth}px`;
                         el.style.height = 'auto';
                         el.style.overflow = 'visible';
                     }
                 }
             });
 
-            const imgData = canvas.toDataURL('image/png');
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
             const pdf = new jsPDF('p', 'mm', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+
+            const margin = 10; // 10mm margin
+            const maxLineWidth = pageWidth - (margin * 2);
+            const maxLineHeight = pageHeight - (margin * 2);
+
+            const imgWidth = maxLineWidth;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            // If the content is longer than one page, add multiple pages
+            let heightLeft = imgHeight;
+            let position = margin;
+
+            pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
+            heightLeft -= maxLineHeight;
+
+            while (heightLeft >= 0) {
+                position = heightLeft - imgHeight + margin;
+                pdf.addPage();
+                pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
+                heightLeft -= maxLineHeight;
+            }
+
             pdf.save(`Invoice-${invoice.invoiceNumber}.pdf`);
         } catch (error) {
             console.error('PDF Generation Error:', error);
@@ -286,7 +310,7 @@ export default function InvoiceModal({ invoice, isOpen, onClose }: InvoiceModalP
                                     </div>
                                     <div className="h-24 flex items-end justify-center mb-2 px-4">
                                         <span className="font-['Dancing_Script',_cursive] text-6xl text-gray-800 -rotate-3 select-none translate-x-4 opacity-90">
-                                            {invoice.companySignature || 'Rajesh K.'}
+                                            {invoice.companySignature || 'V.Edelt.'}
                                         </span>
                                     </div>
                                     <div className="w-64 h-px bg-gray-300" />
