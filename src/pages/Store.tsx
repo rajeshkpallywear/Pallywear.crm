@@ -111,9 +111,6 @@ export default function Store() {
           <Link to="/login" className="hidden sm:block">
             <Button variant="outline" size="sm" className="bg-white/50">Sign in</Button>
           </Link>
-          <Link to="/register">
-            <Button variant="primary" size="sm">Get Started</Button>
-          </Link>
         </div>
       </header>
 
@@ -175,9 +172,6 @@ export default function Store() {
                 <Link to="/login" className="block">
                   <Button variant="outline" className="w-full py-4 text-base">Sign in</Button>
                 </Link>
-                <Link to="/register" className="block">
-                  <Button variant="primary" className="w-full py-4 text-base">Get Started Free</Button>
-                </Link>
               </div>
             </motion.div>
           </>
@@ -214,11 +208,6 @@ export default function Store() {
           <Link to="/login">
             <Button variant="outline" size="lg" className="bg-white gap-2">
               See in Action
-            </Button>
-          </Link>
-          <Link to="/register">
-            <Button variant="primary" size="lg" className="gap-2">
-              Start Free Trial <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
         </motion.div>
