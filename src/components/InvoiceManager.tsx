@@ -41,26 +41,42 @@ export default function InvoiceManager() {
         bankAccountNumber: '50202110682524',
     });
 
-    const products = ['tshirt', 'shirt', 'hoodie', 'bottle', 'pen', 'mug', 'pants', 'jersce'];
+    const products = ['tshirt', 'jersey', 'hoodie', 'bottle', 'pen', 'mug', 'diary', 'keychain', 'cap', 'corporate gift', 'paint', 'shirt'];
     const paymentMethods = ['GPay', 'PhonePay', 'Cash', 'Account', 'UPI'];
-    const subCategories = ['polo', 'everyday polo', 'blended polo', 'sethariy polo'];
+
+    const productSubCategories: Record<string, string[]> = {
+        'tshirt': ['blended polo', 'economy polo', 'every day polo', 'feathery polo', 'comfort polo', 'affordable polo', 'round neck 180 gsm'],
+        'jersey': ['round neck', 'polo', 'kinds round neck', 'kinds polo'],
+        'corporate gift': ['7 in 1', '5 in 1', '4 in 1', '3 in 1', '2 in 1'],
+    };
 
     const productPrices: Record<string, number> = {
-        'tshirt': 499,
-        'shirt': 799,
-        'hoodie': 1199,
-        'bottle': 299,
-        'pen': 49,
-        'mug': 249,
-        'pants': 999,
-        'jersce': 1499,
+        'tshirt': 400,
+        'jersey': 650,
+        'hoodie': 2000,
+        'bottle': 999,
+        'pen': 300,
+        'mug': 600,
+        'diary': 600,
+        'keychain': 400,
+        'cap': 600,
+        'corporate gift': 1000,
+        'paint': 1000,
+        'shirt': 1000,
     };
 
     const subCategoryPrices: Record<string, number> = {
-        'polo': 699,
-        'everyday polo': 599,
-        'blended polo': 799,
-        'sethariy polo': 899,
+        'blended polo': 600,
+        'economy polo': 600,
+        'every day polo': 700,
+        'feathery polo': 800,
+        'comfort polo': 900,
+        'affordable polo': 500,
+        'round neck 180 gsm': 400,
+        'round neck': 650,
+        'polo': 700,
+        'kinds round neck': 600,
+        'kinds polo': 650,
     };
 
     const calculatePrice = (type: string, sub: string) => {
@@ -393,7 +409,7 @@ export default function InvoiceManager() {
                                                 </select>
                                             </div>
 
-                                            {(newInvoiceData.productType === 'tshirt' || newInvoiceData.productType === 'hoodie') && (
+                                            {(newInvoiceData.productType === 'tshirt' || newInvoiceData.productType === 'jersey' || newInvoiceData.productType === 'corporate gift') && (
                                                 <div className="space-y-1.5">
                                                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Style Selection</label>
                                                     <select
@@ -401,8 +417,8 @@ export default function InvoiceManager() {
                                                         onChange={(e) => handleSubCategoryChange(e.target.value)}
                                                         className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none capitalize"
                                                     >
-                                                        <option value="">Standard Base</option>
-                                                        {subCategories.map(s => (
+                                                        <option value="">Select Option</option>
+                                                        {(productSubCategories[newInvoiceData.productType] || []).map(s => (
                                                             <option key={s} value={s}>{s}</option>
                                                         ))}
                                                     </select>
