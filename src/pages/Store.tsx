@@ -60,7 +60,7 @@ export default function Store() {
             transition={{ duration: 0.6 }}
             className="text-6xl md:text-8xl font-black text-gray-900 mb-8 leading-[0.95] tracking-tight"
           >
-            Welcome To <br /> The <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">PallyWear</span>
+            Welcome To<br />Pilots Of <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">PallyWear</span>
           </motion.h1>
 
           <motion.p
