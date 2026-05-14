@@ -56,7 +56,7 @@ export default function Dashboard() {
             onClick={() => setActiveTab('dashboard')}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
-              activeTab === 'dashboard' ? "bg-brand-secondary text-brand-primary" : "text-gray-500 hover:bg-gray-50"
+              activeTab === 'dashboard' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:bg-gray-50"
             )}
           >
             <Layout className="w-4 h-4" /> Dashboard
@@ -65,7 +65,7 @@ export default function Dashboard() {
             onClick={() => setActiveTab('reports')}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
-              activeTab === 'reports' ? "bg-brand-secondary text-brand-primary" : "text-gray-500 hover:bg-gray-50"
+              activeTab === 'reports' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:bg-gray-50"
             )}
           >
             <BarChart3 className="w-4 h-4" /> Reports
@@ -74,7 +74,7 @@ export default function Dashboard() {
             onClick={() => setActiveTab('clients')}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
-              activeTab === 'clients' ? "bg-brand-secondary text-brand-primary" : "text-gray-500 hover:bg-gray-50"
+              activeTab === 'clients' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:bg-gray-50"
             )}
           >
             <Users className="w-4 h-4" /> Clients
@@ -83,7 +83,7 @@ export default function Dashboard() {
             onClick={() => setActiveTab('invoices')}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
-              activeTab === 'invoices' ? "bg-brand-secondary text-brand-primary" : "text-gray-500 hover:bg-gray-50"
+              activeTab === 'invoices' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:bg-gray-50"
             )}
           >
             <Activity className="w-4 h-4" /> Invoices
@@ -260,7 +260,7 @@ export default function Dashboard() {
                       <tr key={i} className="hover:bg-gray-50/50">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-white border border-brand-secondary/30 flex items-center justify-center text-brand-primary font-bold text-xs">
+                            <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold text-xs shadow-sm shadow-brand-primary/20">
                               {l.name.charAt(0)}
                             </div>
                             <span className="font-bold text-gray-800">{l.name}</span>

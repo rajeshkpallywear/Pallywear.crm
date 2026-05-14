@@ -131,7 +131,7 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab('overview')}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
-              activeTab === 'overview' ? "bg-brand-secondary text-brand-primary" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
+              activeTab === 'overview' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
             )}
           >
             <TrendingUp className="w-4 h-4" /> Overview
@@ -140,7 +140,7 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab('users')}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
-              activeTab === 'users' ? "bg-brand-secondary text-brand-primary" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
+              activeTab === 'users' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
             )}
           >
             <Users className="w-4 h-4" /> Users
@@ -149,7 +149,7 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab('invoices')}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
-              activeTab === 'invoices' ? "bg-brand-secondary text-brand-primary" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
+              activeTab === 'invoices' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
             )}
           >
             <BarChart3 className="w-4 h-4" /> Invoices
@@ -158,7 +158,7 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab('logs')}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
-              activeTab === 'logs' ? "bg-brand-secondary text-brand-primary" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
+              activeTab === 'logs' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
             )}
           >
             <FileText className="w-4 h-4" /> Audit Logs
@@ -167,7 +167,7 @@ export default function AdminDashboard() {
             onClick={() => setActiveTab('security')}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
-              activeTab === 'security' ? "bg-brand-secondary text-brand-primary" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
+              activeTab === 'security' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:text-brand-primary hover:bg-gray-50"
             )}
           >
             <Shield className="w-4 h-4" /> Security
@@ -349,7 +349,7 @@ export default function AdminDashboard() {
                       <tr key={invoice.id} className="hover:bg-gray-50/30 transition-colors group">
                         <td className="px-6 py-4 text-nowrap">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-white border border-brand-secondary/30 flex items-center justify-center text-xs font-bold text-brand-primary shadow-sm">
+                            <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-xs font-bold text-white shadow-sm shadow-brand-primary/20">
                               {invoice.createdByName?.charAt(0) || 'U'}
                             </div>
                             <span className="text-xs text-gray-600 font-medium">{invoice.createdByName}</span>
@@ -418,7 +418,7 @@ export default function AdminDashboard() {
                     <tr key={u.id} className="hover:bg-gray-50/50 group">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-white border border-brand-secondary/30 flex items-center justify-center text-brand-primary font-bold text-xs uppercase overflow-hidden shadow-sm">
+                          <div className="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold text-xs uppercase overflow-hidden shadow-md shadow-brand-primary/20">
                             {u.avatar ? (
                               <img src={u.avatar} alt={u.name} />
                             ) : (
@@ -435,8 +435,8 @@ export default function AdminDashboard() {
                         <button
                           onClick={() => handleToggleUserRole(u.id, u.role)}
                           className={cn(
-                            "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border transition-all hover:scale-105 active:scale-95",
-                            u.role === 'admin' ? "bg-purple-50 text-purple-700 border-purple-100" : "bg-gray-50 text-gray-600 border-gray-100"
+                            "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border transition-all hover:scale-105 active:scale-95 bg-white shadow-sm",
+                            u.role === 'admin' ? "text-purple-700 border-purple-100" : "text-gray-600 border-gray-100"
                           )}
                         >
                           {u.role}
