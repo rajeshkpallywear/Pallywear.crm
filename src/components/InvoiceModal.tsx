@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Download, Printer, Send, CreditCard, Laptop } from 'lucide-react';
 import { Invoice } from '../types';
@@ -14,6 +14,7 @@ interface InvoiceModalProps {
 
 export default function InvoiceModal({ invoice, isOpen, onClose }: InvoiceModalProps) {
     const invoiceRef = useRef<HTMLDivElement>(null);
+    const [isQrOpen, setIsQrOpen] = useState(false);
 
     if (!invoice) return null;
 
@@ -104,6 +105,35 @@ export default function InvoiceModal({ invoice, isOpen, onClose }: InvoiceModalP
                         onClick={onClose}
                         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                     />
+
+                    {/* Large QR Modal overlay when clicked */}
+                    <AnimatePresence>
+                        {isQrOpen && (
+                            <motion.div
+                                initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+                                animate={{ opacity: 1, backdropFilter: 'blur(10px)' }}
+                                exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+                                className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4 cursor-zoom-out"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsQrOpen(false);
+                                }}
+                            >
+                                <motion.div
+                                    initial={{ scale: 0.8, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    exit={{ scale: 0.8, opacity: 0 }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                                    className="max-w-md w-full aspect-square bg-white rounded-[60px] p-10 shadow-2xl relative"
+                                >
+                                    <img src="/Qr.png" className="w-full h-full object-contain" alt="Large QR" />
+                                    <div className="absolute -bottom-16 left-0 right-0 text-center">
+                                        <p className="text-white font-black uppercase tracking-[0.4em] text-[10px]">Tap anywhere to close</p>
+                                    </div>
+                                </motion.div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -229,8 +259,11 @@ export default function InvoiceModal({ invoice, isOpen, onClose }: InvoiceModalP
                                                 <p className="text-sm font-black text-gray-900">{invoice.paymentMethod || 'GPay'}</p>
                                             </div>
                                         </div>
-                                        <div className="flex items-start gap-6">
-                                            <div className="flex-shrink-0 w-24 h-24 bg-gray-50 border border-gray-100 rounded-xl overflow-hidden p-1 shadow-sm">
+                                        <div className="flex items-start gap-8">
+                                            <div
+                                                className="flex-shrink-0 w-48 h-48 bg-white border border-gray-100 rounded-3xl overflow-hidden p-1 shadow-md cursor-zoom-in hover:scale-105 transition-transform duration-300"
+                                                onClick={() => setIsQrOpen(true)}
+                                            >
                                                 <img
                                                     src="/Qr.png"
                                                     alt="Payment QR Code"
@@ -238,7 +271,7 @@ export default function InvoiceModal({ invoice, isOpen, onClose }: InvoiceModalP
                                                     referrerPolicy="no-referrer"
                                                 />
                                             </div>
-                                            <div className="space-y-1">
+                                            <div className="space-y-1.5 pt-3">
                                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Company Bank Details</p>
                                                 <p className="text-[11px] font-black text-gray-900 leading-tight">Bank: <span className="text-brand-primary">{invoice.bankName || 'HDFC BANK'}</span></p>
                                                 <p className="text-[11px] font-black text-gray-900 leading-tight">Acc Name: <span className="text-gray-600">{invoice.bankAccountName || 'PALLYWEAR PVT LTD'}</span></p>
@@ -288,16 +321,19 @@ export default function InvoiceModal({ invoice, isOpen, onClose }: InvoiceModalP
                             </div>
 
                             {/* Signature area (matching image) */}
-                            <div className="mt-20 flex justify-end">
+                            <div className="mt-20 flex justify-between items-end px-4">
+                                {/* Seal on the left */}
+                                <div className="relative w-48 h-48 opacity-80 pointer-events-none rotate-[-8deg] mb-8">
+                                    <img
+                                        src="/SEAL.png"
+                                        alt="Company Seal"
+                                        className="w-full h-full object-contain"
+                                        referrerPolicy="no-referrer"
+                                    />
+                                </div>
+
+                                {/* Signature on the right */}
                                 <div className="relative text-center">
-                                    <div className="absolute -top-32 -left-20 w-48 h-48 opacity-80 pointer-events-none rotate-[-5deg]">
-                                        <img
-                                            src="/SEAL.png"
-                                            alt="Company Seal"
-                                            className="w-full h-full object-contain"
-                                            referrerPolicy="no-referrer"
-                                        />
-                                    </div>
                                     <div className="h-32 flex items-end justify-center mb-2 px-4">
                                         <img
                                             src="/signature.png"
