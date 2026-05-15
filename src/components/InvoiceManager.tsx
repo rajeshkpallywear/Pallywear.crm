@@ -1,545 +1,571 @@
 import React, { useState } from 'react';
 import { useLeads } from '../context/LeadContext';
 import { useAuth } from '../context/AuthContext';
-import { Lead, LeadType } from '../types';
-import { Button } from './Button';
 import {
-    Plus, Edit2, Trash2, Download, Search,
-    X, Check, AlertCircle, Phone, Building2,
-    FileText, Calendar, DollarSign, Briefcase, Zap
+    Plus, Search, Download, FileText,
+    Trash2, Eye, Calendar, DollarSign
 } from 'lucide-react';
+import { Button } from './Button';
 import { motion, AnimatePresence } from 'motion/react';
-import { exportToExcel } from '../lib/excel';
-import { cn } from '../lib/utils';
+import InvoiceModal from './InvoiceModal';
+import { Invoice } from '../types';
 
-interface LeadManagerProps {
-    hideAdd?: boolean;
-}
-
-export default function LeadManager({ hideAdd = false }: LeadManagerProps) {
-    const { leads, addLead, updateLead, deleteLead } = useLeads();
+export default function InvoiceManager() {
+    const { leads, invoices, addInvoice, deleteInvoice } = useLeads();
     const { user } = useAuth();
+    const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingLead, setEditingLead] = useState<Lead | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+    const [isNewInvoiceModalOpen, setIsNewInvoiceModalOpen] = useState(false);
 
-    const [formData, setFormData] = useState({
-        name: '',
-        number: '',
-        companyName: '',
-        gst: '',
-        leadType: 'Warm' as LeadType,
-        entryDate: new Date().toISOString().split('T')[0],
-        forecastedValue: 0,
-        convertedValue: 0,
-        totalOrderValue: 0,
-        discountCode: '',
-        discountAmount: 0,
-        netTotal: 0,
+    const [newInvoiceData, setNewInvoiceData] = useState({
+        leadId: `L-${Math.random().toString(36).substring(2, 7)}`,
+        invoiceNumber: `QT.${Math.floor(Math.random() * 9000) + 1000}`,
+        dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        notes: 'Quality garments and merchandise solutions.',
+        customerName: '',
+        customerCompanyName: '',
+        customerNumber: '',
+        productType: 'tshirt' as string,
+        productSubCategory: '' as string,
+        paymentMethod: 'GPay' as 'GPay' | 'PhonePay' | 'Cash' | 'Account' | 'UPI',
+        unitPrice: 499,
+        quantity: 1,
+        taxRate: 5,
+        shippingCost: 0,
+        discountRate: 20,
+        companySignature: 'Rajesh K.',
+        bankName: 'HDFC BANK',
+        bankAccountName: 'PALLYWEAR PVT LTD',
+        bankIfscCode: 'HDFC0008964',
+        bankAccountNumber: '50202110682524',
     });
 
-    const isFirstLead = leads.filter(l => l.createdBy === user?.id).length === 0;
+    const products = ['tshirt', 'jersey', 'hoodie', 'bottle', 'pen', 'mug', 'diary', 'keychain', 'cap', 'corporate gift', 'paint', 'shirt'];
+    const paymentMethods = ['GPay', 'PhonePay', 'Cash', 'Account', 'UPI'];
 
-    const handleOpenAdd = () => {
-        setEditingLead(null);
-        setFormData({
-            name: '',
-            number: '',
-            companyName: '',
-            gst: '',
-            leadType: 'Warm',
-            entryDate: new Date().toISOString().split('T')[0],
-            forecastedValue: 0,
-            convertedValue: 0,
-            totalOrderValue: 0,
-            discountCode: isFirstLead ? 'FIRST10' : '',
-            discountAmount: 0,
-            netTotal: 0,
+    const productSubCategories: Record<string, string[]> = {
+        'tshirt': ['blended polo', 'economy polo', 'every day polo', 'feathery polo', 'comfort polo', 'affordable polo', 'round neck 180 gsm'],
+        'jersey': ['round neck', 'polo', 'kinds round neck', 'kinds polo'],
+        'corporate gift': ['7 in 1', '5 in 1', '4 in 1', '3 in 1', '2 in 1'],
+    };
+
+    const productPrices: Record<string, number> = {
+        'tshirt': 400,
+        'jersey': 650,
+        'hoodie': 2000,
+        'bottle': 999,
+        'pen': 300,
+        'mug': 600,
+        'diary': 600,
+        'keychain': 400,
+        'cap': 600,
+        'corporate gift': 1000,
+        'paint': 1000,
+        'shirt': 1000,
+    };
+
+    const subCategoryPrices: Record<string, number> = {
+        'blended polo': 600,
+        'economy polo': 600,
+        'every day polo': 700,
+        'feathery polo': 800,
+        'comfort polo': 900,
+        'affordable polo': 500,
+        'round neck 180 gsm': 400,
+        'round neck': 650,
+        'polo': 700,
+        'kinds round neck': 600,
+        'kinds polo': 650,
+    };
+
+    const calculatePrice = (type: string, sub: string) => {
+        if (sub && subCategoryPrices[sub]) return subCategoryPrices[sub];
+        return productPrices[type] || 0;
+    };
+
+    const handleProductChange = (type: string) => {
+        const price = calculatePrice(type, '');
+        setNewInvoiceData({
+            ...newInvoiceData,
+            productType: type,
+            productSubCategory: '',
+            unitPrice: price
         });
+    };
+
+    const handleSubCategoryChange = (sub: string) => {
+        const price = calculatePrice(newInvoiceData.productType, sub);
+        setNewInvoiceData({
+            ...newInvoiceData,
+            productSubCategory: sub,
+            unitPrice: price
+        });
+    };
+
+    const filteredInvoices = invoices.filter(inv =>
+        inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        inv.billToName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const handleOpenInvoice = (invoice: Invoice) => {
+        setSelectedInvoice(invoice);
         setIsModalOpen(true);
     };
 
-    const calculateFinancials = (total: number, code: string) => {
-        let discount = 0;
-        if (code === 'FIRST10') {
-            discount = total * 0.1;
-        }
-        return {
-            discountAmount: discount,
-            netTotal: total - discount
-        };
-    };
-
-    const handleOpenEdit = (lead: Lead) => {
-        setEditingLead(lead);
-        setFormData({
-            name: lead.name,
-            number: lead.number,
-            companyName: lead.companyName,
-            gst: lead.gst,
-            leadType: lead.leadType,
-            entryDate: lead.entryDate,
-            forecastedValue: lead.forecastedValue,
-            convertedValue: lead.convertedValue,
-            totalOrderValue: lead.totalOrderValue,
-            discountCode: lead.discountCode || '',
-            discountAmount: lead.discountAmount || 0,
-            netTotal: lead.netTotal || lead.totalOrderValue,
-        });
-        setIsModalOpen(true);
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const { discountAmount, netTotal } = calculateFinancials(formData.totalOrderValue, formData.discountCode);
-        const finalData = { ...formData, discountAmount, netTotal };
-
-        if (editingLead) {
-            updateLead(editingLead.id, finalData);
-        } else {
-            addLead({
-                ...finalData,
-                createdBy: user?.id || 'unknown',
-                createdByName: user?.name || 'Unknown',
+    const handleLeadSelect = (leadId: string) => {
+        const lead = leads.find(l => l.id === leadId);
+        if (lead) {
+            setNewInvoiceData({
+                ...newInvoiceData,
+                leadId,
+                customerName: lead.name,
+                customerCompanyName: lead.companyName,
+                customerNumber: lead.number
             });
+        } else {
+            setNewInvoiceData({ ...newInvoiceData, leadId: '' });
         }
-        setIsModalOpen(false);
     };
 
-    const handleExport = () => {
-        const exportData = leads.map(l => ({
-            'Lead ID': l.id,
-            'Name': l.name,
-            'Phone': l.number,
-            'Company': l.companyName,
-            'GST': l.gst,
-            'Type': l.leadType,
-            'Entry Date': l.entryDate,
-            'Forecasted Value': l.forecastedValue,
-            'Converted Value': l.convertedValue,
-            'Total Order Value': l.totalOrderValue,
-            'Created By': l.createdByName
-        }));
-        exportToExcel(exportData, 'Leads_Report');
-    };
+    const handleCreateInvoice = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
 
-    const filteredLeads = leads.filter(l => {
-        const query = searchQuery.toLowerCase();
-        const matchesSearch = l.name.toLowerCase().includes(query) ||
-            l.companyName.toLowerCase().includes(query) ||
-            l.id.toLowerCase().includes(query) ||
-            (l.createdByName && l.createdByName.toLowerCase().includes(query));
+        const subtotal = newInvoiceData.unitPrice * newInvoiceData.quantity;
+        const discountTotal = (subtotal * newInvoiceData.discountRate) / 100;
+        const itemTotalAfterDiscount = subtotal - discountTotal;
+        const salesTax = (itemTotalAfterDiscount * newInvoiceData.taxRate) / 100;
+        const shippingCost = newInvoiceData.shippingCost;
+        const total = itemTotalAfterDiscount + salesTax + shippingCost;
 
-        const matchesStartDate = !startDate || l.entryDate >= startDate;
-        const matchesEndDate = !endDate || l.entryDate <= endDate;
+        const invoice: Omit<Invoice, 'id'> = {
+            invoiceNumber: newInvoiceData.invoiceNumber,
+            date: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            dueDate: new Date(newInvoiceData.dueDate).toISOString(),
+            fromName: 'Pallywear Gifting Solutions',
+            fromEmail: user.email,
+            fromPhone: '+91 91583 01804',
+            fromAddress: 'Pallywear Gifting Solutions, Bus Stop, 49/1, Mudichur\nRoad,Near By Parvathi Nagar Shanthi Nagar, Old\nPerungalathur, Chennai, Tamil Nadu - 600063',
+            billToName: newInvoiceData.customerName,
+            billToEmail: `${newInvoiceData.customerName.toLowerCase().replace(/\s+/g, '.')}@example.com`,
+            billToPhone: newInvoiceData.customerNumber,
+            billToAddress: newInvoiceData.customerCompanyName,
+            items: [
+                {
+                    id: 'item-1',
+                    description: `${newInvoiceData.productType.toUpperCase()} ${newInvoiceData.productSubCategory ? `(${newInvoiceData.productSubCategory.toUpperCase()})` : ''}`,
+                    rate: newInvoiceData.unitPrice,
+                    quantity: newInvoiceData.quantity,
+                    tax: newInvoiceData.taxRate,
+                    discount: newInvoiceData.discountRate,
+                    amount: subtotal
+                }
+            ],
+            subtotal,
+            discountTotal,
+            shippingCost,
+            salesTax,
+            total,
+            amountPaid: 0,
+            balanceDue: total,
+            notes: newInvoiceData.notes,
+            paymentMethod: newInvoiceData.paymentMethod,
+            productType: newInvoiceData.productType,
+            productSubCategory: newInvoiceData.productSubCategory,
+            customerPhoneNumber: newInvoiceData.customerNumber,
+            leadId: newInvoiceData.leadId,
+            createdBy: user.id,
+            createdByName: user.name,
+            companySignature: newInvoiceData.companySignature || 'Rajesh K.',
+            bankName: newInvoiceData.bankName || 'HDFC BANK',
+            bankAccountName: newInvoiceData.bankAccountName || 'PALLYWEAR PVT LTD',
+            bankIfscCode: newInvoiceData.bankIfscCode || 'HDFC0008964',
+            bankAccountNumber: newInvoiceData.bankAccountNumber || '50202110682524',
+        };
 
-        return matchesSearch && matchesStartDate && matchesEndDate;
-    });
-
-    const canManage = (lead: Lead) => {
-        if (user?.role === 'admin') return true;
-        return lead.createdBy === user?.id;
+        try {
+            await addInvoice(invoice);
+            setIsNewInvoiceModalOpen(false);
+            // Reset form
+            setNewInvoiceData({
+                leadId: `L-${Math.random().toString(36).substring(2, 7)}`,
+                invoiceNumber: `QT.${Math.floor(Math.random() * 9000) + 1000}`,
+                dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                notes: 'Quality garments and merchandise solutions.',
+                customerName: '',
+                customerCompanyName: '',
+                customerNumber: '',
+                productType: 'tshirt',
+                productSubCategory: '',
+                paymentMethod: 'CASH',
+                unitPrice: 499,
+                quantity: 1,
+                taxRate: 5,
+                shippingCost: 0,
+                discountRate: 20,
+                companySignature: 'Rajesh K.',
+                bankName: 'HDFC BANK',
+                bankAccountName: 'PALLYWEAR PVT LTD',
+                bankIfscCode: 'HDFC0008964',
+                bankAccountNumber: '50202110682524',
+            });
+        } catch (err: any) {
+            console.error("Failed to save invoice:", err);
+            let errorMsg = "Error saving invoice.";
+            try {
+                const errorData = JSON.parse(err.message);
+                errorMsg = `Error: ${errorData.error}\nType: ${errorData.operationType}\nPath: ${errorData.path}`;
+            } catch (e) {
+                errorMsg = err.message || "Please check your internet connection and Firestore permissions.";
+            }
+            alert(errorMsg);
+        }
     };
 
     return (
         <div className="space-y-6">
-            {/* Header Actions */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-4 flex-1">
-                    <div className="relative flex-1 max-w-sm">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Search leads or staff..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-xl px-3 py-1.5 shadow-sm">
-                        <Calendar className="w-4 h-4 text-gray-400" />
-                        <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="text-xs bg-transparent border-none focus:ring-0 p-0 text-gray-600"
-                            placeholder="Start Date"
-                        />
-                        <span className="text-gray-300">to</span>
-                        <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="text-xs bg-transparent border-none focus:ring-0 p-0 text-gray-600"
-                            placeholder="End Date"
-                        />
-                        {(startDate || endDate) && (
-                            <button
-                                onClick={() => { setStartDate(''); setEndDate(''); }}
-                                className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
-                        )}
-                    </div>
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div className="relative w-full md:w-96">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Search invoices by number or client..."
+                        className="w-full pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-primary/10 transition-all font-medium"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
                 </div>
-                <div className="flex items-center gap-3">
-                    <Button variant="outline" size="md" className="bg-white gap-2" onClick={handleExport}>
-                        <Download className="w-4 h-4" /> Export Excel
-                    </Button>
-                    {!hideAdd && (
-                        <Button size="md" className="gap-2" onClick={handleOpenAdd}>
-                            <Plus className="w-4 h-4" /> Add Lead
-                        </Button>
-                    )}
+                <Button onClick={() => setIsNewInvoiceModalOpen(true)} className="w-full md:w-auto gap-2 shadow-lg shadow-brand-primary/20 bg-brand-primary hover:bg-brand-primary/90 text-white border-0 py-2.5 px-6 rounded-2xl">
+                    <Plus className="w-4 h-4" /> Create Invoice
+                </Button>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead>
+                            <tr className="bg-gray-50/50 text-gray-400 font-black uppercase tracking-widest text-[10px]">
+                                <th className="px-6 py-5">Invoice Reference</th>
+                                <th className="px-6 py-5">Customer Details</th>
+                                <th className="px-6 py-5">Transaction Amount</th>
+                                <th className="px-6 py-5">Status / Due</th>
+                                <th className="px-6 py-5 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {filteredInvoices.slice().sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()).map((inv) => (
+                                <tr key={inv.id} className="hover:bg-gray-50/50 transition-colors group">
+                                    <td className="px-6 py-5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 bg-brand-secondary rounded-xl text-brand-primary group-hover:scale-110 transition-transform">
+                                                <FileText className="w-4.5 h-4.5" />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-gray-900">{inv.invoiceNumber}</p>
+                                                <p className="text-[10px] text-gray-400 font-black uppercase tracking-tight">ID: {inv.id.slice(0, 6)}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                        <p className="font-bold text-gray-800">{inv.billToName}</p>
+                                        <p className="text-[10px] text-gray-400 font-medium truncate max-w-[150px]">{inv.billToCompanyName || inv.billToAddress}</p>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                        <p className="font-black text-brand-primary text-base">₹{inv.total.toLocaleString()}</p>
+                                        <p className="text-[10px] text-green-600 font-bold uppercase tracking-wider">{inv.paymentMethod || 'GPAY'}</p>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-gray-500">{new Date(inv.dueDate).toLocaleDateString()}</span>
+                                            <span className="text-[9px] font-black uppercase text-gray-300">Generated {new Date(inv.createdAt || inv.date).toLocaleDateString()}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5 text-right">
+                                        <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={() => handleOpenInvoice(inv)}
+                                                className="p-2.5 hover:bg-white hover:shadow-sm rounded-xl text-brand-primary transition-all bg-brand-secondary/30"
+                                                title="View & Download"
+                                            >
+                                                <Eye className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => deleteInvoice(inv.id)}
+                                                className="p-2.5 hover:bg-white hover:shadow-sm text-gray-400 hover:text-red-500 rounded-xl transition-all"
+                                                title="Delete Permanently"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                            {filteredInvoices.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="px-6 py-32 text-center">
+                                        <div className="flex flex-col items-center gap-4 max-w-sm mx-auto">
+                                            <div className="p-6 bg-brand-secondary rounded-full">
+                                                <FileText className="w-10 h-10 text-brand-primary opacity-50" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-gray-900 font-black text-lg">No Invoices Found</p>
+                                                <p className="text-gray-400 text-sm italic">You haven't generated any invoices yet. Start by clicking the 'Create Invoice' button above.</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            {/* Leads Table */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
-                        <tr>
-                            <th className="px-6 py-4">Staff</th>
-                            <th className="px-6 py-4">Lead Info</th>
-                            <th className="px-6 py-4">Company & GST</th>
-                            <th className="px-6 py-4">Type</th>
-                            <th className="px-6 py-4">Entry Date</th>
-                            <th className="px-6 py-4 text-right">Financials</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {filteredLeads.map((lead) => (
-                            <tr key={lead.id} className="hover:bg-gray-50/30 transition-colors group">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-xs font-bold text-white shadow-sm shadow-brand-primary/20">
-                                            {lead.createdByName?.charAt(0) || 'U'}
-                                        </div>
-                                        <span className="text-xs text-gray-600 font-medium">{lead.createdByName}</span>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className={cn(
-                                            "w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg text-white shadow-md shadow-black/5",
-                                            lead.leadType === 'Hot' ? "bg-red-500" :
-                                                lead.leadType === 'Warm' ? "bg-amber-500" :
-                                                    "bg-blue-500"
-                                        )}>
-                                            {lead.name.charAt(0)}
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-gray-900">{lead.name}</p>
-                                            <p className="text-xs text-gray-500 flex items-center gap-1">
-                                                <Phone className="w-3 h-3" /> {lead.number}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Building2 className="w-3.5 h-3.5 text-gray-400" />
-                                        <span className="font-medium text-gray-700">{lead.companyName}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <FileText className="w-3.5 h-3.5 text-gray-400" />
-                                        <span className="text-xs text-gray-400 font-mono uppercase">{lead.gst || 'No GST'}</span>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={cn(
-                                        "px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider",
-                                        lead.leadType === 'Hot' ? "bg-red-100 text-red-700" :
-                                            lead.leadType === 'Warm' ? "bg-amber-100 text-amber-700" :
-                                                "bg-blue-100 text-blue-700"
-                                    )}>
-                                        {lead.leadType}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2 text-gray-600">
-                                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                                        <span>{lead.entryDate}</span>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="space-y-1">
-                                        <p className="text-xs">
-                                            <span className="text-gray-400">Total Value:</span>
-                                            <span className="font-bold text-gray-700 ml-1">₹{lead.totalOrderValue?.toLocaleString()}</span>
-                                        </p>
-                                        {lead.discountAmount ? (
-                                            <>
-                                                <p className="text-[10px] text-green-600 font-bold flex items-center justify-end gap-1">
-                                                    <Check className="w-3 h-3" /> Discount ({lead.discountCode}): -₹{lead.discountAmount.toLocaleString()}
-                                                </p>
-                                                <p className="text-sm font-black text-brand-primary">
-                                                    ₹{lead.netTotal?.toLocaleString()}
-                                                </p>
-                                            </>
-                                        ) : (
-                                            <p className="text-sm font-black text-gray-900">
-                                                ₹{lead.totalOrderValue?.toLocaleString()}
-                                            </p>
-                                        )}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {canManage(lead) && (
-                                            <>
-                                                <button
-                                                    onClick={() => handleOpenEdit(lead)}
-                                                    className="p-2 hover:bg-brand-secondary text-brand-primary rounded-lg transition-colors"
-                                                    title="Edit Lead"
-                                                >
-                                                    <Edit2 className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={() => deleteLead(lead.id)}
-                                                    className="p-2 hover:bg-red-50 text-red-500 rounded-lg transition-colors"
-                                                    title="Delete Lead"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                        {filteredLeads.length === 0 && (
-                            <tr>
-                                <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">
-                                    No leads found. Use "Add Lead" to get started.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+            <InvoiceModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                invoice={selectedInvoice}
+            />
 
-            {/* Add/Edit Modal */}
+            {/* New Invoice Modal */}
             <AnimatePresence>
-                {isModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 sm:p-12">
+                {isNewInvoiceModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            onClick={() => setIsModalOpen(false)}
-                            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                            onClick={() => setIsNewInvoiceModalOpen(false)}
+                            className="absolute inset-0 bg-black/65 backdrop-blur-sm"
                         />
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl relative z-10 overflow-hidden flex flex-col max-h-full"
+                            initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 30, scale: 0.95 }}
+                            className="relative bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden shadow-black/30 border border-white/20 max-h-[90vh] flex flex-col"
                         >
-                            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-brand-light/30">
-                                <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                                    {editingLead ? <Edit2 className="w-5 h-5 text-brand-primary" /> : <Plus className="w-5 h-5 text-brand-primary" />}
-                                    {editingLead ? 'Update Lead Details' : 'Register New Lead'}
-                                </h3>
-                                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                                    <X className="w-5 h-5 text-gray-400" />
-                                </button>
-                            </div>
-
-                            <form onSubmit={handleSubmit} className="p-6 overflow-y-auto overflow-x-hidden space-y-6">
-                                {/* Special Offer Banner */}
-                                {!editingLead && isFirstLead && (
-                                    <motion.div
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: 'auto' }}
-                                        className="bg-brand-primary/5 border border-brand-primary/20 p-4 rounded-xl flex items-start gap-3"
-                                    >
-                                        <div className="p-2 bg-brand-primary/10 rounded-lg">
-                                            <Zap className="w-5 h-5 text-brand-primary" strokeWidth={3} />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-brand-primary">First Order Reward Unlocked!</p>
-                                            <p className="text-xs text-brand-primary/70">Use coupon <span className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-brand-primary/20">FIRST10</span> to get 10% off on your first order conversion.</p>
-                                        </div>
-                                    </motion.div>
-                                )}
-
-                                {/* Basic Info */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Client Name</label>
-                                        <div className="relative">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                            <input
-                                                required
-                                                type="text"
-                                                value={formData.name}
-                                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/10"
-                                                placeholder="John Doe"
-                                            />
-                                        </div>
+                            <div className="p-1 flex flex-col h-full overflow-hidden">
+                                <div className="px-8 pt-8 pb-4 flex items-center justify-between flex-shrink-0">
+                                    <div className="space-y-1">
+                                        <h3 className="text-2xl font-black text-gray-900 tracking-tighter">Generate Invoice</h3>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-0.5">Professional Billing Solution</p>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Contact Number</label>
-                                        <div className="relative">
-                                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                            <input
-                                                required
-                                                type="tel"
-                                                value={formData.number}
-                                                onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/10"
-                                                placeholder="+91 0000000000"
-                                            />
-                                        </div>
-                                    </div>
+                                    <button onClick={() => setIsNewInvoiceModalOpen(false)} className="p-3 hover:bg-gray-100 rounded-2xl text-gray-400 transition-colors">
+                                        <X className="w-6 h-6" />
+                                    </button>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Company Name</label>
-                                        <div className="relative">
-                                            <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                            <input
-                                                required
-                                                type="text"
-                                                value={formData.companyName}
-                                                onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/10"
-                                                placeholder="Enterprise Co."
-                                            />
+                                <form onSubmit={handleCreateInvoice} className="px-8 pb-10 space-y-6 overflow-y-auto custom-scrollbar flex-grow">
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Client Name</label>
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    value={newInvoiceData.customerName}
+                                                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, customerName: e.target.value })}
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
+                                                    placeholder="e.g. John Doe"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Mobile Number</label>
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    value={newInvoiceData.customerNumber}
+                                                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, customerNumber: e.target.value })}
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
+                                                    placeholder="+91 XXXX..."
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">GST Number</label>
-                                        <div className="relative">
-                                            <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                            <input
-                                                type="text"
-                                                value={formData.gst}
-                                                onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/10 font-mono uppercase"
-                                                placeholder="22AAAAA0000A1Z5"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
 
-                                {/* Lead Type and Date */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Lead Type</label>
-                                        <div className="flex gap-2">
-                                            {(['Hot', 'Warm', 'Cold'] as LeadType[]).map(type => (
-                                                <button
-                                                    key={type}
-                                                    type="button"
-                                                    onClick={() => setFormData({ ...formData, leadType: type })}
-                                                    className={cn(
-                                                        "flex-1 py-2 px-3 rounded-xl text-xs font-bold border transition-all",
-                                                        formData.leadType === type
-                                                            ? "bg-white text-brand-primary border-brand-primary shadow-md"
-                                                            : "bg-white border-gray-200 text-gray-500 hover:border-brand-primary/50"
-                                                    )}
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Company / Organization</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={newInvoiceData.customerCompanyName}
+                                                onChange={(e) => setNewInvoiceData({ ...newInvoiceData, customerCompanyName: e.target.value })}
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
+                                                placeholder="Organization Name"
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Category</label>
+                                                <select
+                                                    value={newInvoiceData.productType}
+                                                    onChange={(e) => handleProductChange(e.target.value)}
+                                                    className="w-full bg-gray-100 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-black text-brand-primary focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none capitalize"
                                                 >
-                                                    {type}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Entry Date</label>
-                                        <div className="relative">
-                                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                            <input
-                                                required
-                                                type="date"
-                                                value={formData.entryDate}
-                                                onChange={(e) => setFormData({ ...formData, entryDate: e.target.value })}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/10"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
+                                                    {products.map(p => (
+                                                        <option key={p} value={p}>{p}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
 
-                                {/* Financial Values */}
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Financial Overview (₹)</label>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-gray-400">Forecasted</label>
-                                            <div className="relative">
-                                                <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                                            {(newInvoiceData.productType === 'tshirt' || newInvoiceData.productType === 'jersey' || newInvoiceData.productType === 'corporate gift') && (
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Style Selection</label>
+                                                    <select
+                                                        value={newInvoiceData.productSubCategory}
+                                                        onChange={(e) => handleSubCategoryChange(e.target.value)}
+                                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none capitalize"
+                                                    >
+                                                        <option value="">Select Option</option>
+                                                        {(productSubCategories[newInvoiceData.productType] || []).map(s => (
+                                                            <option key={s} value={s}>{s}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Price (₹)</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">₹</span>
+                                                    <input
+                                                        type="number"
+                                                        value={newInvoiceData.unitPrice}
+                                                        onChange={(e) => setNewInvoiceData({ ...newInvoiceData, unitPrice: Number(e.target.value) })}
+                                                        className="w-full bg-brand-secondary/20 border-0 rounded-2xl pl-9 pr-5 py-3.5 text-sm font-black text-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Quantity</label>
                                                 <input
                                                     type="number"
-                                                    value={formData.forecastedValue}
-                                                    onChange={(e) => setFormData({ ...formData, forecastedValue: Number(e.target.value) })}
-                                                    className="w-full bg-white border border-gray-200 rounded-lg pl-6 pr-2 py-1.5 text-sm focus:ring-1 focus:ring-brand-primary"
+                                                    min="1"
+                                                    required
+                                                    value={newInvoiceData.quantity}
+                                                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, quantity: Number(e.target.value) })}
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
                                                 />
                                             </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-gray-400">Converted</label>
-                                            <div className="relative">
-                                                <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Payment via</label>
+                                                <select
+                                                    value={newInvoiceData.paymentMethod}
+                                                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, paymentMethod: e.target.value as any })}
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
+                                                >
+                                                    {paymentMethods.map(pm => (
+                                                        <option key={pm} value={pm}>{pm}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Discount (%)</label>
                                                 <input
                                                     type="number"
-                                                    value={formData.convertedValue}
-                                                    onChange={(e) => setFormData({ ...formData, convertedValue: Number(e.target.value) })}
-                                                    className="w-full bg-white border border-gray-200 rounded-lg pl-6 pr-2 py-1.5 text-sm focus:ring-1 focus:ring-brand-primary"
+                                                    value={newInvoiceData.discountRate}
+                                                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, discountRate: Number(e.target.value) })}
+                                                    className="w-full bg-brand-secondary/10 border border-brand-secondary/20 rounded-2xl px-5 py-3.5 text-sm font-black text-brand-primary focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
+                                                    placeholder="0"
                                                 />
                                             </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-gray-400">Total Order</label>
-                                            <div className="relative">
-                                                <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Shipping (₹)</label>
                                                 <input
                                                     type="number"
-                                                    value={formData.totalOrderValue}
-                                                    onChange={(e) => setFormData({ ...formData, totalOrderValue: Number(e.target.value) })}
-                                                    className="w-full bg-white border border-gray-200 rounded-lg pl-6 pr-2 py-1.5 text-sm focus:ring-1 focus:ring-brand-primary"
+                                                    value={newInvoiceData.shippingCost}
+                                                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, shippingCost: Number(e.target.value) })}
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">GST / Tax (%)</label>
+                                                <input
+                                                    type="number"
+                                                    value={newInvoiceData.taxRate}
+                                                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, taxRate: Number(e.target.value) })}
+                                                    className="w-full bg-gray-100 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-black text-brand-primary focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Hidden bank and signature details */}
+                                        <input type="hidden" value={newInvoiceData.bankName} />
+                                        <input type="hidden" value={newInvoiceData.bankAccountName} />
+                                        <input type="hidden" value={newInvoiceData.bankIfscCode} />
+                                        <input type="hidden" value={newInvoiceData.bankAccountNumber} />
+                                        <input type="hidden" value={newInvoiceData.companySignature} />
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Reference ID</label>
+                                                <input
+                                                    type="text"
+                                                    value={newInvoiceData.invoiceNumber}
+                                                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, invoiceNumber: e.target.value })}
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Valid Until</label>
+                                                <input
+                                                    type="date"
+                                                    value={newInvoiceData.dueDate}
+                                                    onChange={(e) => setNewInvoiceData({ ...newInvoiceData, dueDate: e.target.value })}
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-brand-primary/5 transition-all outline-none"
                                                 />
                                             </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Coupon Code</label>
-                                    <div className="relative">
-                                        <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            value={formData.discountCode}
-                                            onChange={(e) => setFormData({ ...formData, discountCode: e.target.value.toUpperCase() })}
-                                            className="w-full bg-gray-50 border border-gray-100 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary/10 font-mono uppercase"
-                                            placeholder="e.g. FIRST10"
-                                        />
-                                        {formData.discountCode === 'FIRST10' && (
-                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-100">
-                                                <Check className="w-3 h-3" /> 10% Applied
-                                            </div>
-                                        )}
+                                    <div className="pt-2 flex flex-col gap-3 flex-shrink-0">
+                                        <Button type="submit" className="w-full py-4 text-white bg-brand-primary rounded-2xl font-black text-base shadow-xl shadow-brand-primary/30 hover:scale-[1.02] active:scale-95 transition-all outline-none">
+                                            Generate & Save Invoice
+                                        </Button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsNewInvoiceModalOpen(false)}
+                                            className="w-full py-3 text-[11px] font-black uppercase text-gray-400 tracking-widest hover:text-gray-600 transition-colors"
+                                        >
+                                            Dismiss Form
+                                        </button>
                                     </div>
-                                </div>
-
-                                <div className="flex gap-3 pt-4 border-t border-gray-100">
-                                    <Button type="button" variant="outline" className="flex-1" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                                    <Button type="submit" className="flex-[2] shadow-lg shadow-brand-primary/20">
-                                        {editingLead ? 'Update Lead Information' : 'Confirm Registration'}
-                                    </Button>
-                                </div>
-                            </form>
+                                </form>
+                            </div>
                         </motion.div>
                     </div>
                 )}
             </AnimatePresence>
         </div>
+    );
+}
+
+function X({ className, ...props }: React.SVGProps<SVGSVGElement>) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+            {...props}
+        >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+        </svg>
     );
 }

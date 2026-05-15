@@ -66,9 +66,9 @@ export default function Dashboard() {
           <button
             onClick={() => setActiveTab('dashboard')}
             className={cn(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all",
               isSidebarCollapsed && "justify-center px-0",
-              activeTab === 'dashboard' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:bg-gray-50"
+              activeTab === 'dashboard' ? "bg-white text-brand-primary border-2 border-brand-primary/20 shadow-lg shadow-brand-primary/5" : "bg-white text-gray-400 border border-transparent hover:border-gray-100 hover:text-gray-600"
             )}
             title={isSidebarCollapsed ? "Dashboard" : ""}
           >
@@ -77,9 +77,9 @@ export default function Dashboard() {
           <button
             onClick={() => setActiveTab('reports')}
             className={cn(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all",
               isSidebarCollapsed && "justify-center px-0",
-              activeTab === 'reports' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:bg-gray-50"
+              activeTab === 'reports' ? "bg-white text-brand-primary border-2 border-brand-primary/20 shadow-lg shadow-brand-primary/5" : "bg-white text-gray-400 border border-transparent hover:border-gray-100 hover:text-gray-600"
             )}
             title={isSidebarCollapsed ? "Reports" : ""}
           >
@@ -88,9 +88,9 @@ export default function Dashboard() {
           <button
             onClick={() => setActiveTab('clients')}
             className={cn(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all",
               isSidebarCollapsed && "justify-center px-0",
-              activeTab === 'clients' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:bg-gray-50"
+              activeTab === 'clients' ? "bg-white text-brand-primary border-2 border-brand-primary/20 shadow-lg shadow-brand-primary/5" : "bg-white text-gray-400 border border-transparent hover:border-gray-100 hover:text-gray-600"
             )}
             title={isSidebarCollapsed ? "Clients" : ""}
           >
@@ -99,9 +99,9 @@ export default function Dashboard() {
           <button
             onClick={() => setActiveTab('invoices')}
             className={cn(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-sm transition-all",
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all",
               isSidebarCollapsed && "justify-center px-0",
-              activeTab === 'invoices' ? "bg-white text-brand-primary border border-brand-primary/10 shadow-sm" : "text-gray-500 hover:bg-gray-50"
+              activeTab === 'invoices' ? "bg-white text-brand-primary border-2 border-brand-primary/20 shadow-lg shadow-brand-primary/5" : "bg-white text-gray-400 border border-transparent hover:border-gray-100 hover:text-gray-600"
             )}
             title={isSidebarCollapsed ? "Invoices" : ""}
           >
@@ -322,8 +322,11 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Invoice Center</h2>
-                <span className="px-3 py-1 bg-brand-secondary text-brand-primary rounded-full text-[10px] font-bold uppercase">Billing & Payments</span>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Invoice Center</h2>
+                  <p className="text-sm text-gray-500 font-medium">Manage your professional billing and payment records</p>
+                </div>
+                <span className="px-3 py-1 bg-brand-secondary text-brand-primary rounded-full text-[10px] font-bold uppercase tracking-wider">Billing & Payments</span>
               </div>
               <InvoiceManager />
             </div>
