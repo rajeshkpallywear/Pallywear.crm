@@ -77,8 +77,8 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase italic">CMT Digitizer Communication</h2>
-          <p className="text-gray-500 font-medium text-sm">Send instructions and artworks to the embroidery & digitizing team</p>
+          <h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase italic text-left">Digitizer Communication</h2>
+          <p className="text-gray-500 font-medium text-sm text-left">Upload PDF/Images (Max 100MB) for embroidery processing</p>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -145,14 +145,19 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
               layoutId={selectedOrder.id}
               className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col h-full"
             >
-              <div className="p-6 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
+              <div className="p-8 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-black text-gray-900 uppercase italic">Dispatch to Digitizer</h3>
+                  <h3 className="text-xl font-black text-gray-900 uppercase italic">Dispatch to Digitizer</h3>
                   <p className="text-xs text-gray-500 font-medium">Order: #{selectedOrder.id.slice(-8)} | Client: {selectedOrder.customerInfo.name}</p>
                 </div>
-                <div className="w-10 h-10 bg-brand-primary/10 text-brand-primary rounded-xl flex items-center justify-center">
-                  <Send size={20} />
-                </div>
+                <button
+                  disabled={isSending || (!message && attachments.length === 0)}
+                  onClick={handleSend}
+                  className="px-6 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Send size={18} />
+                  <span>Send to Digitizer</span>
+                </button>
               </div>
 
               <div className="p-8 space-y-8 flex-1 overflow-y-auto">
@@ -173,7 +178,7 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
                     <span className="text-[9px] text-brand-primary font-black uppercase">Images/PDF Only</span>
                   </div>
                   <FileUpload
-                    label="Drop Artwork Reference (PNG/JPG/PDF)"
+                    label="Upload Reference Artworks (Images/PDF - Max 100MB)"
                     accept="image/*,.pdf"
                     onFilesSelected={(files) => setAttachments(prev => [...prev, ...files])}
                   />
@@ -228,7 +233,7 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
                   ) : (
                     <>
                       <CheckCircle size={22} />
-                      Send to Digitizing Team
+                      Send to Digitizer
                     </>
                   )}
                 </button>
