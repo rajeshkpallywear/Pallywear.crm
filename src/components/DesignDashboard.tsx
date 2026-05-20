@@ -5,13 +5,13 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { 
-  Palette, 
-  Search, 
-  Clock, 
-  ChevronRight, 
-  FileText, 
-  Download, 
+import {
+  Palette,
+  Search,
+  Clock,
+  ChevronRight,
+  FileText,
+  Download,
   CheckCircle,
   AlertCircle,
   User,
@@ -69,15 +69,15 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
   const [promptError, setPromptError] = useState('');
 
   const designOrders = orders.filter(o => o.status === OrderStatus.DESIGN || (o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.DESIGN));
-  
-  const filteredOrders = designOrders.filter(o => 
+
+  const filteredOrders = designOrders.filter(o =>
     o.customerInfo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     o.id.includes(searchTerm)
   );
 
   const handleProcessOrder = async () => {
     if (!selectedOrder || isProcessing) return;
-    
+
     // Check size estimation of the update result
     const nextOrderState = {
       ...selectedOrder,
@@ -112,7 +112,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
 
   const handleMoveToCreator = () => {
     if (!selectedOrder || isProcessing) return;
-    
+
     setPromptValue('');
     setPromptError('');
     setCustomPrompt({
@@ -233,7 +233,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
 
       {/* Summary Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <button 
+        <button
           onClick={() => setViewMode(viewMode === 'all' ? 'pending' : 'all')}
           className={cn(
             "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group",
@@ -260,10 +260,10 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
           <div>
             <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Order Status</p>
             <p className="text-lg font-bold text-gray-900 leading-tight">
-               {designOrders.length} Pending Art
-               <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter">
+              {designOrders.length} Pending Art
+              <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter">
                 {orders.filter(o => o.status === OrderStatus.HOLD).length} On Hold • {orders.length - designOrders.length} Other Stages
-               </span>
+              </span>
             </p>
           </div>
         </div>
@@ -274,10 +274,10 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
           <div>
             <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Type of Total Order</p>
             <p className="text-lg font-bold text-gray-900 leading-tight">
-               {Array.from(new Set(orders.map(o => o.category))).length} Categories
-               <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter truncate max-w-[150px]">
+              {Array.from(new Set(orders.map(o => o.category))).length} Categories
+              <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter truncate max-w-[150px]">
                 {orders.length > 0 ? orders[0].category : 'No data'}
-               </span>
+              </span>
             </p>
           </div>
         </div>
@@ -397,173 +397,173 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
             className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
           >
             <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between shrink-0">
-               <div>
-                 <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Design Workspace</h3>
-                 <p className="text-xs text-gray-500 font-bold uppercase tabular-nums">Order #{selectedOrder.id}</p>
-               </div>
-               <button onClick={() => setSelectedOrder(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                 <Trash2 size={24} className="text-gray-300" />
-               </button>
+              <div>
+                <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Design Workspace</h3>
+                <p className="text-xs text-gray-500 font-bold uppercase tabular-nums">Order #{selectedOrder.id}</p>
+              </div>
+              <button onClick={() => setSelectedOrder(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <Trash2 size={24} className="text-gray-300" />
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-8 space-y-8">
-               {selectedOrder.status === OrderStatus.HOLD && (
-                 <div className="bg-red-50 border border-red-200 p-6 rounded-2xl flex items-start gap-4 mb-4 text-left">
-                   <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={24} />
-                   <div>
-                     <h5 className="text-sm font-black text-red-900 uppercase italic">Artwork Design Work is On Hold</h5>
-                     <p className="text-xs text-red-700 font-semibold mt-1">Reason: "{selectedOrder.holdReason || 'No reason specified'}"</p>
-                     <p className="text-[10px] text-red-500 font-medium mt-1">Click the "Resume Design Work" button in the footer to unlock updates and move this work to Accounts.</p>
-                   </div>
-                 </div>
-               )}
-
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-6">
-                    <section>
-                       <h4 className="text-[10px] font-black text-brand-primary uppercase mb-3 flex items-center gap-2">
-                         <User size={12} />
-                         Customer Spec
-                       </h4>
-                       <div className="p-4 bg-gray-50 rounded-2xl space-y-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-400 font-black shadow-sm">
-                               {selectedOrder.customerInfo.name.charAt(0)}
-                            </div>
-                            <div>
-                              <p className="text-sm font-bold text-gray-900">{selectedOrder.customerInfo.name}</p>
-                              <p className="text-xs text-gray-500">{selectedOrder.customerInfo.phone}</p>
-                            </div>
-                          </div>
-                          {selectedOrder.assignedDesigner && (
-                            <div className="mt-2 text-xs font-black bg-purple-50 text-purple-700 px-3 py-1.5 rounded-xl border border-purple-100 flex items-center gap-2 w-fit">
-                              <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></span>
-                              Assigned Designer: {selectedOrder.assignedDesigner}
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Requirement</p>
-                            <p className="text-xs font-medium text-gray-700">{selectedOrder.notes || 'No specific notes from client.'}</p>
-                          </div>
-                       </div>
-                    </section>
-
-                    <section>
-                       <h4 className="text-[10px] font-black text-brand-primary uppercase mb-3 flex items-center gap-2">
-                         <Paperclip size={12} />
-                         Reference Files
-                       </h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                           {[...(selectedOrder.staffImages || []), ...(selectedOrder.staffPdfs || [])].map((file, i) => {
-                             const isAudio = file.startsWith('data:audio/');
-                             return (
-                               <div 
-                                 key={i} 
-                                 className="flex flex-col gap-2 p-2 bg-gray-50 rounded-2xl border border-gray-100 group"
-                               >
-                                  <div 
-                                    className="aspect-square rounded-xl overflow-hidden relative bg-white flex items-center justify-center border border-gray-100"
-                                  >
-                                    {file.startsWith('data:image/') ? (
-                                      <img src={file} className="w-full h-full object-cover" />
-                                    ) : isAudio ? (
-                                      <div className="flex flex-col items-center gap-2 text-purple-600">
-                                         <Mic size={32} />
-                                         <span className="text-[8px] font-black uppercase">Voice Note</span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex flex-col items-center gap-2 text-gray-400">
-                                         <FileText size={32} />
-                                         <span className="text-[8px] font-black uppercase">Document</span>
-                                      </div>
-                                    )}
-                                    
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                      {(file.startsWith('data:image/') || file.includes('pdf')) && (
-                                        <button 
-                                          onClick={() => setViewingImage(file)}
-                                          className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white transition-all hover:scale-110"
-                                          title="View"
-                                        >
-                                          <ZoomIn size={16} />
-                                        </button>
-                                      )}
-                                      <a 
-                                        href={file} 
-                                        download={`Asset_${i + 1}${file.includes('pdf') ? '.pdf' : file.includes('webm') ? '.webm' : file.includes('wav') ? '.wav' : '.png'}`}
-                                        className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white transition-all hover:scale-110"
-                                        title="Download"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <Download size={16} />
-                                      </a>
-                                    </div>
-                                  </div>
-                                  {(isAudio || file.includes('audio/')) && (
-                                    <div className="px-1">
-                                      <audio controls className="w-full h-6 scale-90 origin-left">
-                                        <source src={file} />
-                                      </audio>
-                                    </div>
-                                  )}
-                                  <div className="flex items-center justify-between px-1">
-                                     <span className="text-[8px] font-bold text-gray-400 truncate">
-                                        {isAudio ? 'Voice Instructions' : file.startsWith('data:image/') ? 'Image Ref' : 'PDF Document'}
-                                     </span>
-                                  </div>
-                               </div>
-                             );
-                           })}
-                        </div>
-                    </section>
-                  </div>                  <div className="space-y-8 bg-gray-50/50 p-6 rounded-3xl border border-gray-100 flex flex-col justify-start">
-                    <section>
-                      <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Upload size={18} className="text-purple-600" />
-                        Design Output (PDF/AI)
-                      </h4>
-                      <FileUpload
-                        label=""
-                        accept=".pdf,image/*"
-                        onFilesSelected={(files) => setDesignFiles(prev => [...prev, ...files])}
-                      />
-                      <div className="mt-4 grid grid-cols-4 gap-2">
-                        {designFiles.map((file, i) => (
-                           <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-white flex items-center justify-center group">
-                             <FileText size={20} className="text-brand-primary" />
-                             <button onClick={() => handleRemoveFile(i, 'design')} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={10} /></button>
-                           </div>
-                        ))}
-                      </div>
-                    </section>
-
-
+              {selectedOrder.status === OrderStatus.HOLD && (
+                <div className="bg-red-50 border border-red-200 p-6 rounded-2xl flex items-start gap-4 mb-4 text-left">
+                  <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={24} />
+                  <div>
+                    <h5 className="text-sm font-black text-red-900 uppercase italic">Artwork Design Work is On Hold</h5>
+                    <p className="text-xs text-red-700 font-semibold mt-1">Reason: "{selectedOrder.holdReason || 'No reason specified'}"</p>
+                    <p className="text-[10px] text-red-500 font-medium mt-1">Click the "Resume Design Work" button in the footer to unlock updates and move this work to Accounts.</p>
                   </div>
-               </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  <section>
+                    <h4 className="text-[10px] font-black text-brand-primary uppercase mb-3 flex items-center gap-2">
+                      <User size={12} />
+                      Customer Spec
+                    </h4>
+                    <div className="p-4 bg-gray-50 rounded-2xl space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-400 font-black shadow-sm">
+                          {selectedOrder.customerInfo.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">{selectedOrder.customerInfo.name}</p>
+                          <p className="text-xs text-gray-500">{selectedOrder.customerInfo.phone}</p>
+                        </div>
+                      </div>
+                      {selectedOrder.assignedDesigner && (
+                        <div className="mt-2 text-xs font-black bg-purple-50 text-purple-700 px-3 py-1.5 rounded-xl border border-purple-100 flex items-center gap-2 w-fit">
+                          <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></span>
+                          Assigned Designer: {selectedOrder.assignedDesigner}
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Requirement</p>
+                        <p className="text-xs font-medium text-gray-700">{selectedOrder.notes || 'No specific notes from client.'}</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section>
+                    <h4 className="text-[10px] font-black text-brand-primary uppercase mb-3 flex items-center gap-2">
+                      <Paperclip size={12} />
+                      Reference Files
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {[...(selectedOrder.staffImages || []), ...(selectedOrder.staffPdfs || [])].map((file, i) => {
+                        const isAudio = file.startsWith('data:audio/');
+                        return (
+                          <div
+                            key={i}
+                            className="flex flex-col gap-2 p-2 bg-gray-50 rounded-2xl border border-gray-100 group"
+                          >
+                            <div
+                              className="aspect-square rounded-xl overflow-hidden relative bg-white flex items-center justify-center border border-gray-100"
+                            >
+                              {file.startsWith('data:image/') ? (
+                                <img src={file} className="w-full h-full object-cover" />
+                              ) : isAudio ? (
+                                <div className="flex flex-col items-center gap-2 text-purple-600">
+                                  <Mic size={32} />
+                                  <span className="text-[8px] font-black uppercase">Voice Note</span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-center gap-2 text-gray-400">
+                                  <FileText size={32} />
+                                  <span className="text-[8px] font-black uppercase">Document</span>
+                                </div>
+                              )}
+
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                {(file.startsWith('data:image/') || file.includes('pdf')) && (
+                                  <button
+                                    onClick={() => setViewingImage(file)}
+                                    className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white transition-all hover:scale-110"
+                                    title="View"
+                                  >
+                                    <ZoomIn size={16} />
+                                  </button>
+                                )}
+                                <a
+                                  href={file}
+                                  download={`Asset_${i + 1}${file.includes('pdf') ? '.pdf' : file.includes('webm') ? '.webm' : file.includes('wav') ? '.wav' : '.png'}`}
+                                  className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white transition-all hover:scale-110"
+                                  title="Download"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Download size={16} />
+                                </a>
+                              </div>
+                            </div>
+                            {(isAudio || file.includes('audio/')) && (
+                              <div className="px-1">
+                                <audio controls className="w-full h-6 scale-90 origin-left">
+                                  <source src={file} />
+                                </audio>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-[8px] font-bold text-gray-400 truncate">
+                                {isAudio ? 'Voice Instructions' : file.startsWith('data:image/') ? 'Image Ref' : 'PDF Document'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                </div>                  <div className="space-y-8 bg-gray-50/50 p-6 rounded-3xl border border-gray-100 flex flex-col justify-start">
+                  <section>
+                    <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Upload size={18} className="text-purple-600" />
+                      Design Output (PDF/AI)
+                    </h4>
+                    <FileUpload
+                      label=""
+                      accept=".pdf,image/*"
+                      onFilesSelected={(files) => setDesignFiles(prev => [...prev, ...files])}
+                    />
+                    <div className="mt-4 grid grid-cols-4 gap-2">
+                      {designFiles.map((file, i) => (
+                        <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-white flex items-center justify-center group">
+                          <FileText size={20} className="text-brand-primary" />
+                          <button onClick={() => handleRemoveFile(i, 'design')} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={10} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+
+                </div>
+              </div>
             </div>
 
             <div className="p-8 border-t border-gray-100 flex flex-col sm:flex-row gap-4 shrink-0 bg-gray-50/30">
-               <button 
-                  onClick={handlePutOnHold} 
-                  disabled={isProcessing}
-                  className={cn(
-                    "px-6 py-4 border-2 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50",
-                    selectedOrder.status === OrderStatus.HOLD 
-                      ? "border-green-100 text-green-600 hover:bg-green-50 hover:border-green-200 bg-green-50/30" 
-                      : "border-amber-100 text-amber-600 hover:bg-amber-50 hover:border-amber-200 bg-amber-50/30"
-                  )}
-               >
-                 {isProcessing ? <Clock size={18} className="animate-spin" /> : <AlertCircle size={18} />}
-                 {selectedOrder.status === OrderStatus.HOLD ? "Resume Design" : "Hold Work"}
-               </button>
-               <button 
-                  onClick={handleProcessOrder} 
-                  disabled={isProcessing}
-                  className="flex-1 px-6 py-4 bg-brand-primary text-white hover:bg-brand-primary/95 rounded-2xl font-bold shadow-lg shadow-brand-primary/10 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
-               >
-                 {isProcessing ? <Clock size={18} className="animate-spin" /> : <CheckCircle size={18} />}
-                 Complete & Move to Order Management
-               </button>
+              <button
+                onClick={handlePutOnHold}
+                disabled={isProcessing}
+                className={cn(
+                  "px-6 py-4 border-2 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50",
+                  selectedOrder.status === OrderStatus.HOLD
+                    ? "border-green-100 text-green-600 hover:bg-green-50 hover:border-green-200 bg-green-50/30"
+                    : "border-amber-100 text-amber-600 hover:bg-amber-50 hover:border-amber-200 bg-amber-50/30"
+                )}
+              >
+                {isProcessing ? <Clock size={18} className="animate-spin" /> : <AlertCircle size={18} />}
+                {selectedOrder.status === OrderStatus.HOLD ? "Resume Design" : "Hold Work"}
+              </button>
+              <button
+                onClick={handleProcessOrder}
+                disabled={isProcessing}
+                className="flex-1 px-6 py-4 bg-brand-primary text-white hover:bg-brand-primary/95 rounded-2xl font-bold shadow-lg shadow-brand-primary/10 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+              >
+                {isProcessing ? <Clock size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+                Complete & Move to Order Management
+              </button>
             </div>
           </motion.div>
         </div>
@@ -607,7 +607,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
                 }
               }}
             />
-            
+
             {promptError && (
               <p className="text-[10px] text-red-600 font-bold uppercase mb-4 flex items-center gap-1">
                 <AlertCircle size={10} />

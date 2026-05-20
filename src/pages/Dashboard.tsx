@@ -4,7 +4,7 @@ import { useLeads } from '../context/LeadContext';
 import {
   Layout, Bell, Settings, BarChart3, Package, Warehouse,
   Users, LogOut, TrendingUp, DollarSign, Activity, Download, Shield,
-  ChevronLeft, ChevronRight, Menu, Plus
+  ChevronLeft, ChevronRight, Menu, Plus, MessageSquare
 } from 'lucide-react';
 import {
   ResponsiveContainer, FunnelChart, Funnel, LabelList,
@@ -103,7 +103,7 @@ export default function Dashboard() {
     <div className="flex bg-brand-light min-h-screen">
       {/* Mobile Sidebar Backdrop */}
       {isMobileOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/40 z-30 md:hidden animate-fade-in"
           onClick={() => setIsMobileOpen(false)}
         />
@@ -241,6 +241,33 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* Design Channel / Pending Art */}
+          {user?.role && ['designer', 'staff', 'admin', UserRole.DESIGNER, UserRole.STAFF, UserRole.ADMIN].includes(user.role as any) && (
+            <div className="bg-purple-50/50 p-3 rounded-2xl border border-purple-100/80 mb-2">
+              <p className={cn(
+                "text-[10px] font-black text-purple-700 uppercase tracking-[0.2em] mb-2 px-1",
+                isSidebarCollapsed && "md:hidden"
+              )}>Design Channel</p>
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('open-conversations-feed'));
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2.5 bg-white text-purple-700 hover:text-purple-800 rounded-xl shadow-sm border border-purple-100/80 hover:border-purple-300 transition-all active:scale-[0.98]",
+                  isSidebarCollapsed && "md:justify-center md:px-0"
+                )}
+                title={['designer', 'DESIGNER', UserRole.DESIGNER].includes(user?.role as any) ? "Pending Art" : "Talk the Designer"}
+              >
+                <MessageSquare className="w-4 h-4 flex-shrink-0 text-purple-600 animate-pulse" />
+                {(!isSidebarCollapsed || isMobileOpen) && (
+                  <span className="text-[10px] font-black uppercase tracking-widest text-left">
+                    {['designer', 'DESIGNER', UserRole.DESIGNER].includes(user?.role as any) ? "Pending Art" : "Talk the Designer"}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
           {/* Logistics & Inventory Section */}
           {(user?.role === UserRole.ADMIN || user?.role === 'admin' || user?.role === UserRole.ORDER_MANAGEMENT || user?.role === 'order_management' || user?.role === UserRole.STAFF || user?.role === 'staff' || user?.role === UserRole.PRODUCTION || user?.role === 'production') && (
             <div className="pt-2 space-y-1">
@@ -361,7 +388,7 @@ export default function Dashboard() {
                   <p className="text-gray-500 text-sm">Full list of orders across all departments</p>
                 </div>
               </div>
-              
+
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-gray-50 border-b border-gray-100 font-bold text-[10px] text-gray-400 uppercase tracking-widest">

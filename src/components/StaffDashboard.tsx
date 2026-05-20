@@ -153,10 +153,10 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
   const addSizeQuantity = () => {
     setFormData(prev => ({
       ...prev,
-      sizeBreakdown: [...prev.sizeBreakdown, { 
-        category: prev.category, 
-        size: SIZE_OPTIONS[0], 
-        quantity: 1, 
+      sizeBreakdown: [...prev.sizeBreakdown, {
+        category: prev.category,
+        size: SIZE_OPTIONS[0],
+        quantity: 1,
         price: 0,
         colour: '',
         printType: '',
@@ -209,7 +209,7 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
       case 'Hoodie': return HOODIE_COLOURS;
       case 'Sweatshirt': return SWEATSHIRT_COLOURS;
       case 'Pant': return PANT_COLOURS;
-      case 'T-Shirt': 
+      case 'T-Shirt':
         if (material) {
           // Normalizing material name for map lookup
           const key = Object.keys(TSHIRT_COLOURS_MAP).find(k => k.toLowerCase() === material.toLowerCase());
@@ -305,7 +305,7 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
 
       {/* Summary Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <button 
+        <button
           onClick={() => setViewMode(viewMode === 'all' ? 'pending' : 'all')}
           className={cn(
             "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group",
@@ -332,10 +332,10 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
           <div>
             <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Order Status</p>
             <p className="text-lg font-bold text-gray-900 leading-tight">
-               {orders.filter(o => o.status !== OrderStatus.DELIVERED && o.status !== OrderStatus.HOLD).length} Active
-               <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter">
+              {orders.filter(o => o.status !== OrderStatus.DELIVERED && o.status !== OrderStatus.HOLD).length} Active
+              <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter">
                 {orders.filter(o => o.status === OrderStatus.HOLD).length} On Hold • {orders.filter(o => o.status === OrderStatus.DELIVERED).length} Done
-               </span>
+              </span>
             </p>
           </div>
         </div>
@@ -346,10 +346,10 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
           <div>
             <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Type of Total Order</p>
             <p className="text-lg font-bold text-gray-900 leading-tight">
-               {Array.from(new Set(orders.map(o => o.category))).length} Categories
-               <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter truncate max-w-[150px]">
+              {Array.from(new Set(orders.map(o => o.category))).length} Categories
+              <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter truncate max-w-[150px]">
                 {orders.length > 0 ? (orders[0].category + (orders.length > 1 ? ', ' + orders[1].category : '')) : 'No data'}
-               </span>
+              </span>
             </p>
           </div>
         </div>
@@ -382,8 +382,8 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
             <tbody className="divide-y divide-gray-50">
               {filteredOrders.length > 0 ? (
                 filteredOrders.map(order => (
-                  <tr 
-                    key={order.id} 
+                  <tr
+                    key={order.id}
                     onClick={() => setSelectedHubOrder(order)}
                     className="hover:bg-gray-50 transition-colors cursor-pointer group"
                   >
@@ -416,7 +416,7 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
                               e.stopPropagation();
                               if (window.confirm("Send this order manually to Accounts?")) {
                                 try {
-                                  await onUpdateOrder(order.id, { 
+                                  await onUpdateOrder(order.id, {
                                     status: OrderStatus.ACCOUNTS,
                                     updatedAt: Date.now()
                                   });
@@ -466,87 +466,87 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
               Stock Inventory (View Only)
             </h3>
             <div className="flex items-center gap-4">
-               <div className="flex items-center gap-2">
-                  <div className="relative">
-                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                     <input 
-                       type="text" 
-                       placeholder="Search by Product Name..." 
-                       className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-black outline-none w-64"
-                     />
-                  </div>
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-colors uppercase">Search</button>
-               </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by Product Name..."
+                    className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-black outline-none w-64"
+                  />
+                </div>
+                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-colors uppercase">Search</button>
+              </div>
             </div>
           </div>
-          
+
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-12">
-             <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-[#f9f9f9] border-b border-gray-100">
-                    <tr className="text-gray-500 font-bold text-[11px] uppercase tracking-wider">
-                      <th className="px-6 py-4">Image</th>
-                      <th className="px-6 py-4">Product Name</th>
-                      <th className="px-6 py-4">Price</th>
-                      <th className="px-6 py-4">Available Product Stock</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {inventory && inventory.length > 0 ? (
-                      // Aggregate inventory for product-wise view
-                      Object.values(inventory.reduce((acc: any, item) => {
-                        const key = `${item.product}-${item.productType}-${item.sleeve || 'none'}-${item.pocket || 'none'}`;
-                        if (!acc[key]) {
-                          acc[key] = {
-                            product: item.product,
-                            productType: item.productType,
-                            sleeve: item.sleeve,
-                            pocket: item.pocket,
-                            stock: 0,
-                            lastDate: item.date
-                          };
-                        }
-                        if (item.type === 'inward') acc[key].stock += item.quantity;
-                        else acc[key].stock -= item.quantity;
-                        return acc;
-                      }, {})).map((prod: any, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50/50 transition-colors group">
-                          <td className="px-6 py-4">
-                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 group-hover:border-blue-200 transition-colors">
-                              <Package size={20} className="text-gray-400 group-hover:text-blue-500 transition-colors" />
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-blue-600 hover:underline cursor-pointer">{prod.product}</div>
-                            <div className="text-[10px] text-gray-400 font-medium uppercase flex items-center gap-1">
-                               {prod.productType}
-                               {prod.sleeve && <span className="bg-gray-100 px-1 rounded">{prod.sleeve}</span>}
-                               {prod.pocket && <span className="bg-gray-100 px-1 rounded">{prod.pocket}</span>}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 font-medium text-gray-900">
-                            ₹---
-                          </td>
-                          <td className="px-6 py-4 font-bold">
-                            <span className={cn(
-                              "text-xs",
-                              prod.stock > 0 ? "text-green-600" : "text-red-500"
-                            )}>
-                              {prod.stock > 0 ? `instock (${prod.stock})` : `outofstock (${prod.stock})`}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={4} className="px-6 py-12 text-center text-gray-400 italic font-medium">
-                          No inventory products found.
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-[#f9f9f9] border-b border-gray-100">
+                  <tr className="text-gray-500 font-bold text-[11px] uppercase tracking-wider">
+                    <th className="px-6 py-4">Image</th>
+                    <th className="px-6 py-4">Product Name</th>
+                    <th className="px-6 py-4">Price</th>
+                    <th className="px-6 py-4">Available Product Stock</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {inventory && inventory.length > 0 ? (
+                    // Aggregate inventory for product-wise view
+                    Object.values(inventory.reduce((acc: any, item) => {
+                      const key = `${item.product}-${item.productType}-${item.sleeve || 'none'}-${item.pocket || 'none'}`;
+                      if (!acc[key]) {
+                        acc[key] = {
+                          product: item.product,
+                          productType: item.productType,
+                          sleeve: item.sleeve,
+                          pocket: item.pocket,
+                          stock: 0,
+                          lastDate: item.date
+                        };
+                      }
+                      if (item.type === 'inward') acc[key].stock += item.quantity;
+                      else acc[key].stock -= item.quantity;
+                      return acc;
+                    }, {})).map((prod: any, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50/50 transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 group-hover:border-blue-200 transition-colors">
+                            <Package size={20} className="text-gray-400 group-hover:text-blue-500 transition-colors" />
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-blue-600 hover:underline cursor-pointer">{prod.product}</div>
+                          <div className="text-[10px] text-gray-400 font-medium uppercase flex items-center gap-1">
+                            {prod.productType}
+                            {prod.sleeve && <span className="bg-gray-100 px-1 rounded">{prod.sleeve}</span>}
+                            {prod.pocket && <span className="bg-gray-100 px-1 rounded">{prod.pocket}</span>}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                          ₹---
+                        </td>
+                        <td className="px-6 py-4 font-bold">
+                          <span className={cn(
+                            "text-xs",
+                            prod.stock > 0 ? "text-green-600" : "text-red-500"
+                          )}>
+                            {prod.stock > 0 ? `instock (${prod.stock})` : `outofstock (${prod.stock})`}
+                          </span>
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-             </div>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-12 text-center text-gray-400 italic font-medium">
+                        No inventory products found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -562,9 +562,9 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
               <div className="flex items-center gap-4">
                 <h3 className="text-2xl font-bold text-gray-900">Create New Order</h3>
                 <label className="flex items-center gap-2 px-3 py-1 bg-red-50 border border-red-100 rounded-lg cursor-pointer hover:bg-red-100 transition-colors">
-                  <input 
-                    type="checkbox" 
-                    className="w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500" 
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500"
                     checked={formData.isUrgent}
                     onChange={(e) => setFormData({ ...formData, isUrgent: e.target.checked })}
                   />
@@ -649,7 +649,7 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
                             >
                               <X size={14} />
                             </button>
-                            
+
                             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4 items-end">
                               <div className="col-span-2 sm:col-span-1">
                                 <Select
@@ -915,16 +915,16 @@ export default function StaffDashboard({ orders, inventory = [], onCreateOrder, 
 
       {/* Global Hub Detailed View Modal handled by common component */}
       {selectedHubOrder && (
-        <OrderDetailModal 
-          order={selectedHubOrder} 
-          onClose={() => setSelectedHubOrder(null)} 
+        <OrderDetailModal
+          order={selectedHubOrder}
+          onClose={() => setSelectedHubOrder(null)}
           isAdmin={isAdmin}
           onUpdateOrder={onUpdateOrder}
           onUpdateStatus={(status) => {
-             if (window.confirm(`Change order status to ${status}?`)) {
-               onUpdateOrder(selectedHubOrder.id, { status });
-               setSelectedHubOrder(prev => prev ? { ...prev, status } : null);
-             }
+            if (window.confirm(`Change order status to ${status}?`)) {
+              onUpdateOrder(selectedHubOrder.id, { status });
+              setSelectedHubOrder(prev => prev ? { ...prev, status } : null);
+            }
           }}
         />
       )}
