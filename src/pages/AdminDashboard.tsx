@@ -17,6 +17,8 @@ import LeadManager from '../components/LeadManager';
 import ProfileSettings from '../components/ProfileSettings';
 import Logo from '../components/Logo';
 import InvoiceModal from '../components/InvoiceModal';
+import OrderDetailModal from '../components/OrderDetailModal';
+import { Order, OrderStatus } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { collection, getDocs, deleteDoc, doc, setDoc, onSnapshot } from 'firebase/firestore';
@@ -34,9 +36,12 @@ const MOCK_LOGS = [
 
 export default function AdminDashboard() {
   const { user, logout, registeredUsers, deleteUser, loading: authLoading } = useAuth();
-  const { leads, invoices, orders, deleteOrder } = useLeads();
+  const { leads, invoices, orders, updateOrder, deleteOrder } = useLeads();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'invoices' | 'security' | 'logs' | 'orders'>('overview');
+  const [selectedDept, setSelectedDept] = useState<'staff' | 'accounts' | 'order_management' | 'production' | 'delivery' | 'designers'>('staff');
+  const [selectedSection, setSelectedSection] = useState<'total' | 'hold' | 'completed'>('total');
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -154,6 +159,108 @@ export default function AdminDashboard() {
   const totalRevenue = leads.reduce((sum, l) => sum + l.totalOrderValue, 0);
   const totalOrdersValue = orders.reduce((sum, o) => sum + (o.financials?.totalAmount || 0), 0);
   const aggregateTotal = totalRevenue + totalOrdersValue;
+
+  const getFilteredDeptOrders = () => {
+    switch (selectedDept) {
+      case 'staff':
+        if (selectedSection === 'hold') {
+          return orders.filter(o => o.status === OrderStatus.HOLD && (!o.previousStatus || o.previousStatus === OrderStatus.PENDING || o.previousStatus === OrderStatus.DRAFT));
+        } else if (selectedSection === 'completed') {
+          return orders.filter(o => o.status !== OrderStatus.PENDING && o.status !== OrderStatus.DRAFT && o.status !== OrderStatus.HOLD);
+        } else {
+          return orders;
+        }
+
+      case 'accounts':
+        if (selectedSection === 'hold') {
+          return orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ACCOUNTS);
+        } else if (selectedSection === 'completed') {
+          return orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.HOLD].includes(o.status));
+        } else {
+          return orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING].includes(o.status));
+        }
+
+      case 'order_management':
+        if (selectedSection === 'hold') {
+          return orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ORDER_MANAGEMENT);
+        } else if (selectedSection === 'completed') {
+          return orders.filter(o => [OrderStatus.PRODUCTION, OrderStatus.DELIVERY, OrderStatus.DELIVERED].includes(o.status));
+        } else {
+          return orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.DESIGN].includes(o.status));
+        }
+
+      case 'production':
+        if (selectedSection === 'hold') {
+          return orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.PRODUCTION);
+        } else if (selectedSection === 'completed') {
+          return orders.filter(o => [OrderStatus.DELIVERY, OrderStatus.DELIVERED].includes(o.status));
+        } else {
+          return orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.DESIGN, OrderStatus.ORDER_MANAGEMENT].includes(o.status));
+        }
+
+      case 'delivery':
+        if (selectedSection === 'hold') {
+          return orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.DELIVERY);
+        } else if (selectedSection === 'completed') {
+          return orders.filter(o => o.status === OrderStatus.DELIVERED);
+        } else {
+          return orders.filter(o => [OrderStatus.DELIVERY, OrderStatus.DELIVERED].includes(o.status) || (o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.DELIVERY));
+        }
+
+      case 'designers':
+        if (selectedSection === 'hold') {
+          return orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.DESIGN);
+        } else if (selectedSection === 'completed') {
+          return orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.DESIGN, OrderStatus.HOLD].includes(o.status));
+        } else {
+          return orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS].includes(o.status));
+        }
+
+      default:
+        return orders;
+    }
+  };
+
+  const getDeptStats = (dept: 'staff' | 'accounts' | 'order_management' | 'production' | 'delivery' | 'designers') => {
+    let totalCount = 0;
+    let holdCount = 0;
+    let completedCount = 0;
+
+    switch (dept) {
+      case 'staff':
+        holdCount = orders.filter(o => o.status === OrderStatus.HOLD && (!o.previousStatus || o.previousStatus === OrderStatus.PENDING || o.previousStatus === OrderStatus.DRAFT)).length;
+        completedCount = orders.filter(o => o.status !== OrderStatus.PENDING && o.status !== OrderStatus.DRAFT && o.status !== OrderStatus.HOLD).length;
+        totalCount = orders.length;
+        break;
+      case 'accounts':
+        holdCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ACCOUNTS).length;
+        completedCount = orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.HOLD].includes(o.status)).length;
+        totalCount = orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING].includes(o.status)).length;
+        break;
+      case 'order_management':
+        holdCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ORDER_MANAGEMENT).length;
+        completedCount = orders.filter(o => [OrderStatus.PRODUCTION, OrderStatus.DELIVERY, OrderStatus.DELIVERED].includes(o.status)).length;
+        totalCount = orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.DESIGN].includes(o.status)).length;
+        break;
+      case 'production':
+        holdCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.PRODUCTION).length;
+        completedCount = orders.filter(o => [OrderStatus.DELIVERY, OrderStatus.DELIVERED].includes(o.status)).length;
+        totalCount = orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.DESIGN, OrderStatus.ORDER_MANAGEMENT].includes(o.status)).length;
+        break;
+      case 'delivery':
+        holdCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.DELIVERY).length;
+        completedCount = orders.filter(o => o.status === OrderStatus.DELIVERED).length;
+        totalCount = orders.filter(o => [OrderStatus.DELIVERY, OrderStatus.DELIVERED].includes(o.status) || (o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.DELIVERY)).length;
+        break;
+      case 'designers':
+        holdCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.DESIGN).length;
+        completedCount = orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.DESIGN, OrderStatus.HOLD].includes(o.status)).length;
+        totalCount = orders.filter(o => ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS].includes(o.status)).length;
+        break;
+    }
+
+    return { totalCount, holdCount, completedCount };
+  };
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-brand-light">Loading security context...</div>;
 
@@ -596,58 +703,202 @@ export default function AdminDashboard() {
               </table>
             </div>
           ) : activeTab === 'orders' ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
-                  <div className="w-1.5 h-6 bg-brand-primary rounded-full" />
-                  Global Order Management
-                </h2>
-                <Button variant="outline" size="sm" onClick={() => {
-                  window.location.reload();
-                }}>Refresh App</Button>
+            <div className="space-y-8 animate-fadeIn">
+              {/* Header section with Refresh */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                    <div className="w-1.5 h-6 bg-brand-primary rounded-full mt-0.5" />
+                    Global Workflow Auditing
+                  </h2>
+                  <p className="text-gray-500 text-xs mt-0.5 font-semibold uppercase tracking-wider">
+                    Full visibility and direct administrative overrides for all production pipelines
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                  Refresh App Data
+                </Button>
               </div>
+
+              {/* Department Selector Tabs Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {(
+                  [
+                    { id: 'staff', label: '1. Staff Desk', icon: Users },
+                    { id: 'accounts', label: '2. Accounts Team', icon: DollarSign },
+                    { id: 'designers', label: '3. Designers Pool', icon: Shield },
+                    { id: 'order_management', label: '4. Order Mgmt', icon: Settings },
+                    { id: 'production', label: '5. Production Line', icon: BarChart3 },
+                    { id: 'delivery', label: '6. Delivery Phase', icon: Globe },
+                  ] as const
+                ).map((dept, index) => {
+                  const isActive = selectedDept === dept.id;
+                  const { totalCount, holdCount, completedCount } = getDeptStats(dept.id);
+                  const Icon = dept.icon;
+
+                  return (
+                    <button
+                      key={dept.id}
+                      onClick={() => {
+                        setSelectedDept(dept.id);
+                        setSelectedSection('total'); // reset subsection
+                      }}
+                      className={cn(
+                        "p-4 rounded-2xl border text-left flex flex-col gap-3 transition-all relative overflow-hidden group cursor-pointer shadow-sm",
+                        isActive
+                          ? "bg-black text-white border-black scale-[1.02] shadow-md animate-none"
+                          : "bg-white border-gray-100 hover:bg-gray-50/50"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className={cn(
+                          "w-8 h-8 rounded-xl flex items-center justify-center shadow-inner",
+                          isActive ? "bg-white/10 text-white" : "bg-gray-50 text-gray-700"
+                        )}>
+                          <Icon size={16} />
+                        </div>
+                        <span className={cn(
+                          "text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md",
+                          isActive ? "bg-white/10 text-white" : "bg-gray-100 text-gray-500"
+                        )}>
+                          Dept #{index + 1}
+                        </span>
+                      </div>
+
+                      <div>
+                        <p className={cn("text-[10px] font-black uppercase tracking-tight truncate", isActive ? "text-white/80" : "text-gray-500")}>
+                          {dept.label}
+                        </p>
+                        <div className="flex items-baseline gap-1.5 mt-1">
+                          <span className="text-lg font-black">{totalCount}</span>
+                          <span className={cn("text-[9px] font-semibold", isActive ? "text-white/60" : "text-gray-400")}>Total</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1 border-t border-dashed border-gray-200/10 text-[9px] font-bold">
+                        <span className="flex items-center gap-0.5 text-red-500">
+                          ● {holdCount} hold
+                        </span>
+                        <span className="flex items-center gap-0.5 text-green-500">
+                          ✔ {completedCount} ok
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Subsection Filters (Total, Hold, Completed) */}
+              <div className="flex bg-gray-100 p-1.5 rounded-2xl w-fit gap-1">
+                {(
+                  [
+                    { id: 'total', label: '1. Total Orders/Designs', count: getDeptStats(selectedDept).totalCount, color: 'bg-black text-white' },
+                    { id: 'hold', label: '2. Hold Orders/Designs', count: getDeptStats(selectedDept).holdCount, color: 'bg-red-600 text-white shadow-red-600/10' },
+                    { id: 'completed', label: '3. Completed Orders/Designs', count: getDeptStats(selectedDept).completedCount, color: 'bg-green-600 text-white shadow-green-600/10' }
+                  ] as const
+                ).map(sec => {
+                  const isActive = selectedSection === sec.id;
+                  return (
+                    <button
+                      key={sec.id}
+                      onClick={() => setSelectedSection(sec.id)}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer",
+                        isActive
+                          ? `${sec.color} shadow-lg scale-100`
+                          : "text-gray-500 hover:text-gray-900 bg-transparent hover:bg-white/40"
+                      )}
+                    >
+                      <span>{sec.label}</span>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-lg text-[10px] font-black",
+                        isActive ? "bg-white/20 text-white" : "bg-gray-200 text-gray-700"
+                      )}>
+                        {sec.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Data Table */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-gray-50 text-gray-500 font-medium">
+                  <thead className="bg-gray-50 text-gray-500 font-semibold uppercase tracking-wider text-[11px] border-b border-gray-100">
                     <tr>
-                      <th className="px-6 py-4 text-nowrap">Order ID</th>
+                      <th className="px-6 py-4">Order ID</th>
                       <th className="px-6 py-4">Customer</th>
                       <th className="px-6 py-4">Category</th>
                       <th className="px-6 py-4">Quantity</th>
-                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Status & Step</th>
                       <th className="px-6 py-4 text-right">Value</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
+                      <th className="px-6 py-4 text-right">Actions Override</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {orders.map((o) => (
-                      <tr key={o.id} className="hover:bg-gray-50/50 group">
-                        <td className="px-6 py-4 font-mono font-bold text-brand-primary text-xs">#{o.id.slice(-8)}</td>
-                        <td className="px-6 py-4 font-bold text-gray-800">{o.customerInfo.name}</td>
-                        <td className="px-6 py-4 text-gray-500">{o.category}</td>
+                    {getFilteredDeptOrders().map((o) => (
+                      <tr key={o.id} className="hover:bg-gray-50/50 group transition-colors">
+                        <td className="px-6 py-4 font-mono font-black text-brand-primary text-xs">#{o.id.slice(-8)}</td>
+                        <td className="px-6 py-4">
+                          <p className="font-bold text-gray-800">{o.customerInfo.name}</p>
+                          <p className="text-[10px] text-gray-400 font-medium">{o.customerInfo.phone || 'No phone'}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-medium text-gray-700 capitalize">
+                            {o.category}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 font-bold text-gray-600">{o.quantity}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusStyles(o.status)}`}>
-                            {(o.status as string).replace('_', ' ')}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest w-fit border",
+                              o.status === OrderStatus.HOLD ? "bg-red-50 text-red-700 border-red-200" :
+                                o.status === OrderStatus.DELIVERED ? "bg-green-50 text-green-700 border-green-200" :
+                                  "bg-brand-secondary text-brand-primary border-brand-primary/10"
+                            )}>
+                              {o.status.replace('_', ' ')}
+                            </span>
+                            {o.status === OrderStatus.HOLD && o.holdReason && (
+                              <span className="text-[10px] text-red-500 italic block font-semibold">
+                                Reason: {o.holdReason}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-right font-black text-gray-900">₹{(o.financials?.totalAmount || 0).toLocaleString()}</td>
                         <td className="px-6 py-4 text-right">
-                          {user?.role === 'admin' && (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setSelectedOrderDetail(o)}
+                              className="px-3 py-1.5 bg-black hover:bg-gray-800 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer border-none"
+                            >
+                              Edit / Update
+                            </button>
                             <button
                               onClick={() => handleDeleteOrder(o.id)}
-                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer border-none"
                               title="Delete Order"
                             >
                               <Trash2 size={16} />
                             </button>
-                          )}
+                          </div>
                         </td>
                       </tr>
                     ))}
-                    {orders.length === 0 && (
+                    {getFilteredDeptOrders().length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">No global orders recorded yet.</td>
+                        <td colSpan={7} className="px-6 py-24 text-center">
+                          <div className="max-w-md mx-auto text-center space-y-3">
+                            <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 mx-auto border border-dashed border-slate-300">
+                              ✔
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-800">Clear Slate</p>
+                              <p className="text-xs text-gray-400 italic">No orders found matching the filter specs.</p>
+                            </div>
+                          </div>
+                        </td>
                       </tr>
                     )}
                   </tbody>
@@ -818,6 +1069,23 @@ export default function AdminDashboard() {
         isOpen={!!selectedInvoice}
         onClose={() => setSelectedInvoice(null)}
       />
+      {selectedOrderDetail && (
+        <OrderDetailModal
+          order={selectedOrderDetail}
+          onClose={() => setSelectedOrderDetail(null)}
+          onUpdateOrder={async (id, updates) => {
+            try {
+              await updateOrder(id, updates);
+              setSelectedOrderDetail(prev => prev ? { ...prev, ...updates } : null);
+              alert("Order updated successfully.");
+            } catch (e) {
+              console.error(e);
+              alert("Failed to save changes.");
+            }
+          }}
+          isAdmin={true}
+        />
+      )}
     </div>
   );
 }

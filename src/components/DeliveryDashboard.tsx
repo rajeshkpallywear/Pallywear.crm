@@ -20,12 +20,26 @@ interface DeliveryDashboardProps {
 
 export default function DeliveryDashboard({ orders, onUpdateOrder, onDeleteOrder, isAdmin }: DeliveryDashboardProps) {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [viewMode, setViewMode] = useState<'pending' | 'all'>('pending');
+  const [selectedSection, setSelectedSection] = useState<'total' | 'hold' | 'completed'>('total');
   const [selectedHubOrder, setSelectedHubOrder] = useState<Order | null>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const pendingOrders = orders.filter(o => o.status === OrderStatus.DELIVERY || (o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.DELIVERY));
+
+  const filteredOrders = orders.filter(o => {
+    if (selectedSection === 'hold') {
+      return o.status === OrderStatus.HOLD;
+    }
+    if (selectedSection === 'completed') {
+      return o.status === OrderStatus.DELIVERED;
+    }
+    return true;
+  });
+
+  const totalOrdersCount = orders.length;
+  const holdOrdersCount = orders.filter(o => o.status === OrderStatus.HOLD).length;
+  const completedOrdersCount = orders.filter(o => o.status === OrderStatus.DELIVERED).length;
 
   const handleFinishDelivery = async () => {
     if (!selectedOrder || isProcessing) return;
@@ -66,66 +80,93 @@ export default function DeliveryDashboard({ orders, onUpdateOrder, onDeleteOrder
       {/* Summary Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <button
-          onClick={() => setViewMode(viewMode === 'all' ? 'pending' : 'all')}
+          onClick={() => setSelectedSection('total')}
           className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group",
-            viewMode === 'all' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
+            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
+            selectedSection === 'total' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
           )}
         >
           <div className={cn(
             "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            viewMode === 'all' ? "bg-white/20 text-white" : "bg-blue-50 text-blue-600 group-hover:bg-blue-100"
+            selectedSection === 'total' ? "bg-white/20 text-white" : "bg-blue-50 text-blue-600 group-hover:bg-blue-100"
           )}>
             <Package size={24} />
           </div>
           <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", viewMode === 'all' ? "text-white/70" : "text-gray-500")}>
-              {viewMode === 'all' ? "Showing All Orders" : "Total Orders"}
+            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'total' ? "text-white/70" : "text-gray-500")}>
+              Total Orders
             </p>
             <p className="text-2xl font-black text-gray-900 leading-tight">
-              <span className={cn(viewMode === 'all' ? "text-white" : "text-gray-900")}>{orders.length}</span>
+              <span className={cn(selectedSection === 'total' ? "text-white" : "text-gray-900")}>{totalOrdersCount}</span>
             </p>
+            <span className={cn("text-[9px] font-semibold block mt-1", selectedSection === 'total' ? "text-white/60" : "text-gray-400")}>
+              All shipments
+            </span>
           </div>
         </button>
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center shadow-inner">
+
+        <button
+          onClick={() => setSelectedSection('hold')}
+          className={cn(
+            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
+            selectedSection === 'hold' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
+          )}
+        >
+          <div className={cn(
+            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
+            selectedSection === 'hold' ? "bg-white/20 text-white" : "bg-red-50 text-red-600 group-hover:bg-red-100"
+          )}>
             <Truck size={24} />
           </div>
           <div>
-            <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Order Status</p>
-            <p className="text-lg font-bold text-gray-900 leading-tight">
-              {pendingOrders.length} In Transit
-              <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter">
-                {orders.filter(o => o.status === OrderStatus.HOLD).length} On Hold • {orders.filter(o => o.status === OrderStatus.DELIVERED).length} Delivered
-              </span>
+            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'hold' ? "text-white/70" : "text-gray-500")}>
+              Hold Orders
             </p>
+            <p className="text-2xl font-black text-gray-900 leading-tight">
+              <span className={cn(selectedSection === 'hold' ? "text-white" : "text-gray-900")}>{holdOrdersCount}</span>
+            </p>
+            <span className={cn("text-[9px] font-semibold block mt-1", selectedSection === 'hold' ? "text-white/60" : "text-gray-400")}>
+              Blocked shipments
+            </span>
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center shadow-inner">
+        </button>
+
+        <button
+          onClick={() => setSelectedSection('completed')}
+          className={cn(
+            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
+            selectedSection === 'completed' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
+          )}
+        >
+          <div className={cn(
+            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
+            selectedSection === 'completed' ? "bg-white/20 text-white" : "bg-green-50 text-green-600 group-hover:bg-green-100"
+          )}>
             <TrendingUp size={24} />
           </div>
           <div>
-            <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Success Rate</p>
-            <p className="text-lg font-bold text-gray-900 leading-tight">
-              {orders.length > 0 ? Math.round((orders.filter(o => o.status === OrderStatus.DELIVERED).length / orders.length) * 100) : 0}% Completion
-              <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter truncate max-w-[150px]">
-                {orders.filter(o => o.status === OrderStatus.DELIVERED).length} Successfully Closed
-              </span>
+            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'completed' ? "text-white/70" : "text-gray-500")}>
+              Completed Orders
             </p>
+            <p className="text-2xl font-black text-gray-900 leading-tight">
+              <span className={cn(selectedSection === 'completed' ? "text-white" : "text-gray-900")}>{completedOrdersCount}</span>
+            </p>
+            <span className={cn("text-[9px] font-semibold block mt-1", selectedSection === 'completed' ? "text-white/60" : "text-gray-400")}>
+              Successfully Delivered
+            </span>
           </div>
-        </div>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1 space-y-4">
-          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <Truck className="text-orange-600" size={20} />
-            {viewMode === 'all' ? 'Delivery History' : 'Out for Delivery'} ({viewMode === 'all' ? orders.length : pendingOrders.length})
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
+            <Truck className="text-orange-600" size={16} />
+            {selectedSection === 'total' ? 'All Delivery Records' : selectedSection === 'hold' ? 'On Hold Deliveries' : 'Successful Deliveries'} ({filteredOrders.length})
           </h3>
           <div className="space-y-3">
-            {(viewMode === 'all' ? orders : pendingOrders).length > 0 ? (
-              (viewMode === 'all' ? orders : pendingOrders).map(order => (
+            {filteredOrders.length > 0 ? (
+              filteredOrders.map(order => (
                 <button
                   key={order.id}
                   onClick={() => setSelectedOrder(order)}

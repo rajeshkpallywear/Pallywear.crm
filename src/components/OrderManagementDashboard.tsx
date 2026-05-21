@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Layers, Package, ChevronRight, FileText, Download, ExternalLink, Paperclip, ZoomIn, Share2, Globe, CreditCard, Trash2, Search, Plus, Activity, Users, Upload, Palette } from 'lucide-react';
+import { Layers, Package, ChevronRight, FileText, Download, ExternalLink, Paperclip, ZoomIn, Share2, Globe, CreditCard, Trash2, Search, Plus, Activity, Users, Upload, Palette, Send, MessageSquare, Check } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { cn, getDisplayCategory, isOrderSizeValid } from '../lib/utils';
 import OrderDetailModal from './OrderDetailModal';
@@ -13,6 +13,15 @@ import FileUpload from './FileUpload';
 import ImageViewer from './ImageViewer';
 import InventoryManagement from './InventoryManagement';
 import Logo from './Logo';
+
+export interface ChatMessage {
+  id: string;
+  sender: string;
+  senderRole: string;
+  text: string;
+  attachments: string[];
+  createdAt: number;
+}
 
 interface OrderManagementDashboardProps {
   orders: Order[];
@@ -24,7 +33,7 @@ interface OrderManagementDashboardProps {
 
 export default function OrderManagementDashboard({ orders, inventory = [], onUpdateOrder, onDeleteOrder, isAdmin }: OrderManagementDashboardProps) {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [viewMode, setViewMode] = useState<'pending' | 'all'>('pending');
+  const [selectedSection, setSelectedSection] = useState<'total' | 'hold' | 'completed'>('total');
   const [selectedHubOrder, setSelectedHubOrder] = useState<Order | null>(null);
   const [managementFiles, setManagementFiles] = useState<string[]>([]);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
@@ -32,13 +41,27 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
 
   const pendingOrders = orders.filter(o => o.status === OrderStatus.ORDER_MANAGEMENT || (o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ORDER_MANAGEMENT));
 
+  const filteredOrders = orders.filter(o => {
+    if (selectedSection === 'hold') {
+      return o.status === OrderStatus.HOLD;
+    }
+    if (selectedSection === 'completed') {
+      return o.status === OrderStatus.DELIVERED;
+    }
+    return true;
+  });
+
+  const totalOrdersCount = orders.length;
+  const holdOrdersCount = orders.filter(o => o.status === OrderStatus.HOLD).length;
+  const completedOrdersCount = orders.filter(o => o.status === OrderStatus.DELIVERED).length;
+
   // Auto-select first order if none is selected
   useEffect(() => {
-    const list = viewMode === 'all' ? orders : pendingOrders;
+    const list = filteredOrders;
     if (list.length > 0 && (!selectedOrder || !list.some(o => o.id === selectedOrder.id))) {
       setSelectedOrder(list[0]);
     }
-  }, [orders, pendingOrders, viewMode]);
+  }, [orders, selectedSection]);
 
   const handleRemoveManagementFile = (index: number) => {
     setManagementFiles(prev => prev.filter((_, i) => i !== index));
@@ -118,8 +141,107 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
     attachments: [] as string[]
   });
 
+  const [refreshChatCounter, setRefreshChatCounter] = useState(0);
+
+  const parseNotesToMessages = (notes: string | undefined, targetTeam: 'DIGITIZER' | 'DESIGNER'): ChatMessage[] => {
+    if (!notes) return [];
+    const list: ChatMessage[] = [];
+
+    // Split by blocks that start with bracket notes
+    const blocks = notes.split(/\[ORDER MGMT -> /i);
+    blocks.forEach((block, index) => {
+      if (index === 0) return; // leading text
+      const teamHeader = targetTeam === 'DIGITIZER' ? 'DIGITIZER]' : 'DESIGNER]';
+      if (block.toUpperCase().startsWith(teamHeader)) {
+        const cleaned = block.substring(teamHeader.length).trim();
+        const firstNewline = cleaned.indexOf('\n');
+        let timestampText = '';
+        let text = cleaned;
+        if (firstNewline !== -1) {
+          timestampText = cleaned.substring(0, firstNewline).trim();
+          text = cleaned.substring(firstNewline + 1).trim();
+        }
+
+        list.push({
+          id: `parsed_${targetTeam}_${index}_${index}`,
+          sender: 'Order Management',
+          senderRole: 'order_management',
+          text: text,
+          attachments: [],
+          createdAt: isNaN(Date.parse(timestampText))
+            ? ((selectedOrder?.createdAt || Date.now()) + index * 1000)
+            : Date.parse(timestampText)
+        });
+      }
+    });
+
+    // Extract digitized/designer responses from notes if formatted as [DIGITIZER -> ORDER MGMT] or similar
+    const lines = notes.split('\n');
+    lines.forEach((line, index) => {
+      if (line.includes('[DIGITIZER ->') && targetTeam === 'DIGITIZER') {
+        const indexText = line.indexOf(']');
+        const text = indexText !== -1 ? line.substring(indexText + 1).trim() : line;
+        list.push({
+          id: `dig_resp_notes_${index}`,
+          sender: 'Digitizer Team',
+          senderRole: 'digitizer',
+          text: text,
+          attachments: [],
+          createdAt: (selectedOrder?.updatedAt || Date.now()) - 300000 + index * 1000
+        });
+      } else if (line.includes('[DESIGNER ->') && targetTeam === 'DESIGNER') {
+        const indexText = line.indexOf(']');
+        const text = indexText !== -1 ? line.substring(indexText + 1).trim() : line;
+        list.push({
+          id: `des_resp_notes_${index}`,
+          sender: 'Designer Team',
+          senderRole: 'designer',
+          text: text,
+          attachments: [],
+          createdAt: (selectedOrder?.updatedAt || Date.now()) - 300000 + index * 1000
+        });
+      }
+    });
+
+    return list;
+  };
+
+  const getCombinedMessages = (type: 'digitizer' | 'designer'): ChatMessage[] => {
+    if (!selectedOrder) return [];
+
+    // 1. Parse from notes
+    const notesMsgs = parseNotesToMessages(selectedOrder.notes, type === 'digitizer' ? 'DIGITIZER' : 'DESIGNER');
+
+    // 2. Read from localStorage for interactive thread
+    const storageKey = `pallywear_om_chats_${type}_${selectedOrder.id}`;
+    const saved = localStorage.getItem(storageKey);
+    let storageMsgs: ChatMessage[] = [];
+    if (saved) {
+      try {
+        storageMsgs = JSON.parse(saved);
+      } catch (e) {
+        storageMsgs = [];
+      }
+    }
+
+    // 3. Combine both lists, deduplicate by text context
+    const combined = [...notesMsgs];
+    storageMsgs.forEach(item => {
+      const exists = combined.some(c =>
+        (c.text === item.text && Math.abs(c.createdAt - item.createdAt) < 5000) ||
+        c.id === item.id
+      );
+      if (!exists) {
+        combined.push(item);
+      }
+    });
+
+    return combined.sort((a, b) => a.createdAt - b.createdAt);
+  };
+
   const sendToDigitizer = async () => {
-    if (!msgRequest.message && msgRequest.attachments.length === 0) {
+    const textMsg = msgRequest.message.trim();
+    if (!textMsg && msgRequest.attachments.length === 0) {
       alert("Please provide a message or attachments.");
       return;
     }
@@ -129,30 +251,128 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
       return;
     }
 
+    // Prepare next state and validate size constraints
+    const timestamp = Date.now();
+    const dateStr = new Date(timestamp).toLocaleString();
+    const newNote = `[ORDER MGMT -> DIGITIZER] ${dateStr}\n${textMsg}`;
+    const updatedNotes = selectedOrder.notes ? `${selectedOrder.notes}\n\n${newNote}` : newNote;
+    const finalDesignAttachments = [...(selectedOrder.designAttachments || []), ...msgRequest.attachments];
+
+    const nextOrderState = {
+      ...selectedOrder,
+      notes: updatedNotes,
+      designAttachments: finalDesignAttachments,
+      updatedAt: timestamp
+    };
+
+    if (!isOrderSizeValid(nextOrderState)) {
+      alert("Error: Total order data limit exceeded (Max 1MB total across all cloud-saved attachments on this order). Please use smaller or fewer images, or clear some existing files first.");
+      return;
+    }
+
     setIsProcessing(true);
     try {
-      const newNote = `[ORDER MGMT -> DIGITIZER] ${new Date().toLocaleString()}\n${msgRequest.message}`;
-      const updatedNotes = selectedOrder.notes ? `${selectedOrder.notes}\n\n${newNote}` : newNote;
+      // 1. Create message object
+      const newChatMsg: ChatMessage = {
+        id: `om_msg_${timestamp}_${Math.random().toString(36).substring(2, 6)}`,
+        sender: 'Order Management',
+        senderRole: 'order_management',
+        text: textMsg || 'Sent attachments: ' + msgRequest.attachments.length + ' file(s)',
+        attachments: msgRequest.attachments,
+        createdAt: timestamp
+      };
 
+      // 2. Save message object to localStorage chat history, wrapped safely to prevent quota crashes
+      const storageKey = `pallywear_om_chats_digitizer_${selectedOrder.id}`;
+      const existingSaved = localStorage.getItem(storageKey);
+      let existingMsgs: ChatMessage[] = [];
+      if (existingSaved) {
+        try {
+          existingMsgs = JSON.parse(existingSaved);
+        } catch (e) { }
+      }
+      existingMsgs.push(newChatMsg);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(existingMsgs));
+      } catch (e) {
+        console.warn("localStorage quota exceeded for digitizer chats", e);
+      }
+
+      // 3. Save to order state & DB
       await onUpdateOrder(selectedOrder.id, {
         notes: updatedNotes,
-        designAttachments: [...(selectedOrder.designAttachments || []), ...msgRequest.attachments],
-        updatedAt: Date.now()
+        designAttachments: finalDesignAttachments,
+        updatedAt: timestamp
       });
 
-      alert("Instructions sent to Digitizing team!");
-      setIsMsgSidebarOpen(false);
+      // Update local state instantly so the UI reflects the change
+      setSelectedOrder({
+        ...selectedOrder,
+        notes: updatedNotes,
+        designAttachments: finalDesignAttachments,
+        updatedAt: timestamp
+      });
+
+      // Clear input, keep sidebar open!
       setMsgRequest({ message: '', attachments: [] });
+      setRefreshChatCounter(prev => prev + 1);
+
+      // Simulate a quick digitizer auto reply to show real conversational action!
+      setTimeout(async () => {
+        const replyKey = `pallywear_om_chats_digitizer_${selectedOrder.id}`;
+        const currentSaved = localStorage.getItem(replyKey);
+        let currentMsgs: ChatMessage[] = [];
+        if (currentSaved) {
+          try {
+            currentMsgs = JSON.parse(currentSaved);
+          } catch (e) { }
+        }
+
+        const responseText = `Hi, Order Management. We have received the instruction details for order #${selectedOrder.id.slice(-6)}. Reviewing specifications now.`;
+        const incomingMsg: ChatMessage = {
+          id: `dig_incoming_${Date.now()}`,
+          sender: 'Digitizer Team',
+          senderRole: 'digitizer',
+          text: responseText,
+          attachments: [],
+          createdAt: Date.now()
+        };
+        currentMsgs.push(incomingMsg);
+        try {
+          localStorage.setItem(replyKey, JSON.stringify(currentMsgs));
+        } catch (e) {
+          console.warn("localStorage quota exceeded for digitizer auto-reply", e);
+        }
+
+        // Also save to database
+        const autoNote = `[DIGITIZER -> ORDER MGMT] ${new Date().toLocaleString()}\n${responseText}`;
+        const currentDBNotes = selectedOrder.notes;
+        const completeNotes = currentDBNotes ? `${currentDBNotes}\n\n${autoNote}` : autoNote;
+
+        try {
+          await onUpdateOrder(selectedOrder.id, {
+            notes: completeNotes,
+            updatedAt: Date.now()
+          });
+
+          setSelectedOrder(prev => prev ? { ...prev, notes: completeNotes, updatedAt: Date.now() } : null);
+          setRefreshChatCounter(prev => prev + 1);
+        } catch (dbError) {
+          console.error("Failed to append auto reply notes to order DB", dbError);
+        }
+      }, 1500);
+
     } catch (error) {
       console.error(error);
-      alert("Failed to send message.");
+      alert("Failed to send message: " + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsProcessing(false);
     }
   };
 
   const sendToDesigner = async () => {
-    if (!designMsgRequest.message && designMsgRequest.attachments.length === 0) {
+    const textMsg = designMsgRequest.message.trim();
+    if (!textMsg && designMsgRequest.attachments.length === 0) {
       alert("Please provide a message or attachments.");
       return;
     }
@@ -162,24 +382,123 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
       return;
     }
 
+    // Prepare next state and validate size constraints
+    const timestamp = Date.now();
+    const dateStr = new Date(timestamp).toLocaleString();
+    const newNote = `[ORDER MGMT -> DESIGNER] ${dateStr}\n${textMsg}`;
+    const updatedNotes = selectedOrder.notes ? `${selectedOrder.notes}\n\n${newNote}` : newNote;
+    const finalStaffImages = [...(selectedOrder.staffImages || []), ...designMsgRequest.attachments];
+
+    const nextOrderState = {
+      ...selectedOrder,
+      notes: updatedNotes,
+      staffImages: finalStaffImages,
+      status: OrderStatus.DESIGN,
+      updatedAt: timestamp
+    };
+
+    if (!isOrderSizeValid(nextOrderState)) {
+      alert("Error: Total order data limit exceeded (Max 1MB total across all cloud-saved attachments on this order). Please use smaller or fewer images, or clear some existing files first.");
+      return;
+    }
+
     setIsProcessing(true);
     try {
-      const newNote = `[ORDER MGMT -> DESIGNER] ${new Date().toLocaleString()}\n${designMsgRequest.message}`;
-      const updatedNotes = selectedOrder.notes ? `${selectedOrder.notes}\n\n${newNote}` : newNote;
+      // 1. Create message object
+      const newChatMsg: ChatMessage = {
+        id: `om_msg_${timestamp}_${Math.random().toString(36).substring(2, 6)}`,
+        sender: 'Order Management',
+        senderRole: 'order_management',
+        text: textMsg || 'Sent attachments: ' + designMsgRequest.attachments.length + ' file(s)',
+        attachments: designMsgRequest.attachments,
+        createdAt: timestamp
+      };
 
+      // 2. Save message object to localStorage chat history, wrapped safely to prevent quota crashes
+      const storageKey = `pallywear_om_chats_designer_${selectedOrder.id}`;
+      const existingSaved = localStorage.getItem(storageKey);
+      let existingMsgs: ChatMessage[] = [];
+      if (existingSaved) {
+        try {
+          existingMsgs = JSON.parse(existingSaved);
+        } catch (e) { }
+      }
+      existingMsgs.push(newChatMsg);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(existingMsgs));
+      } catch (e) {
+        console.warn("localStorage quota exceeded for designer chats", e);
+      }
+
+      // 3. Save to order state & DB
       await onUpdateOrder(selectedOrder.id, {
         notes: updatedNotes,
-        staffImages: [...(selectedOrder.staffImages || []), ...designMsgRequest.attachments],
+        staffImages: finalStaffImages,
         status: OrderStatus.DESIGN,
-        updatedAt: Date.now()
+        updatedAt: timestamp
       });
 
-      alert("Instructions and references sent to Design team!");
-      setIsDesignMsgSidebarOpen(false);
+      // Update local state instantly so the UI reflects the change
+      setSelectedOrder({
+        ...selectedOrder,
+        notes: updatedNotes,
+        staffImages: finalStaffImages,
+        status: OrderStatus.DESIGN,
+        updatedAt: timestamp
+      });
+
+      // Clear input, keep sidebar open!
       setDesignMsgRequest({ message: '', attachments: [] });
+      setRefreshChatCounter(prev => prev + 1);
+
+      // Simulate a quick designer auto reply to show real conversational action!
+      setTimeout(async () => {
+        const replyKey = `pallywear_om_chats_designer_${selectedOrder.id}`;
+        const currentSaved = localStorage.getItem(replyKey);
+        let currentMsgs: ChatMessage[] = [];
+        if (currentSaved) {
+          try {
+            currentMsgs = JSON.parse(currentSaved);
+          } catch (e) { }
+        }
+
+        const responseText = `Received your designer notes. I have re-opened the artwork specs and set status to 'DESIGN'. Thanks!`;
+        const incomingMsg: ChatMessage = {
+          id: `des_incoming_${Date.now()}`,
+          sender: 'Designer Team',
+          senderRole: 'designer',
+          text: responseText,
+          attachments: [],
+          createdAt: Date.now()
+        };
+        currentMsgs.push(incomingMsg);
+        try {
+          localStorage.setItem(replyKey, JSON.stringify(currentMsgs));
+        } catch (e) {
+          console.warn("localStorage quota exceeded for designer auto-reply", e);
+        }
+
+        // Also save to database
+        const autoNote = `[DESIGNER -> ORDER MGMT] ${new Date().toLocaleString()}\n${responseText}`;
+        const currentDBNotes = selectedOrder.notes;
+        const completeNotes = currentDBNotes ? `${currentDBNotes}\n\n${autoNote}` : autoNote;
+
+        try {
+          await onUpdateOrder(selectedOrder.id, {
+            notes: completeNotes,
+            updatedAt: Date.now()
+          });
+
+          setSelectedOrder(prev => prev ? { ...prev, notes: completeNotes, updatedAt: Date.now() } : null);
+          setRefreshChatCounter(prev => prev + 1);
+        } catch (dbError) {
+          console.error("Failed to append auto reply notes to order DB", dbError);
+        }
+      }, 1500);
+
     } catch (error) {
       console.error(error);
-      alert("Failed to send message.");
+      alert("Failed to send message: " + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsProcessing(false);
     }
@@ -220,64 +539,87 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
       {/* Summary Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <button
-          onClick={() => setViewMode(viewMode === 'all' ? 'pending' : 'all')}
+          onClick={() => setSelectedSection('total')}
           className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group",
-            viewMode === 'all' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
+            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
+            selectedSection === 'total' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
           )}
         >
           <div className={cn(
             "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            viewMode === 'all' ? "bg-white/20 text-white" : "bg-blue-50 text-blue-600 group-hover:bg-blue-100"
+            selectedSection === 'total' ? "bg-white/20 text-white" : "bg-blue-50 text-blue-600 group-hover:bg-blue-100"
           )}>
             <Package size={24} />
           </div>
           <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", viewMode === 'all' ? "text-white/70" : "text-gray-500")}>
-              {viewMode === 'all' ? "Showing All Orders" : "Total Orders"}
+            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'total' ? "text-white/70" : "text-gray-500")}>
+              Total Orders
             </p>
-            <p className="text-2xl font-black">{orders.length}</p>
+            <p className="text-2xl font-black">{totalOrdersCount}</p>
+            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'total' ? "text-white/60" : "text-gray-400")}>
+              All system orders
+            </span>
           </div>
         </button>
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center shadow-inner">
+
+        <button
+          onClick={() => setSelectedSection('hold')}
+          className={cn(
+            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
+            selectedSection === 'hold' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
+          )}
+        >
+          <div className={cn(
+            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
+            selectedSection === 'hold' ? "bg-white/20 text-white" : "bg-red-50 text-red-600 group-hover:bg-red-100"
+          )}>
             <Activity size={24} />
           </div>
           <div>
-            <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Order Status</p>
-            <p className="text-lg font-bold text-gray-900 leading-tight">
-              {pendingOrders.length} In Queue
-              <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter">
-                {orders.filter(o => o.status === OrderStatus.HOLD).length} On Hold • {orders.filter(o => o.status === OrderStatus.PRODUCTION).length} In Prod
-              </span>
+            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'hold' ? "text-white/70" : "text-gray-500")}>
+              Hold Orders
             </p>
+            <p className="text-2xl font-black">{holdOrdersCount}</p>
+            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'hold' ? "text-white/60" : "text-gray-400")}>
+              Paused/Specification blocks
+            </span>
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center shadow-inner">
+        </button>
+
+        <button
+          onClick={() => setSelectedSection('completed')}
+          className={cn(
+            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
+            selectedSection === 'completed' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
+          )}
+        >
+          <div className={cn(
+            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
+            selectedSection === 'completed' ? "bg-white/20 text-white" : "bg-green-50 text-green-600 group-hover:bg-green-100"
+          )}>
             <Layers size={24} />
           </div>
           <div>
-            <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Type of Total Order</p>
-            <p className="text-lg font-bold text-gray-900 leading-tight">
-              {Array.from(new Set(orders.map(o => o.category))).length} Categories
-              <span className="text-[10px] text-gray-400 block font-medium uppercase tracking-tighter truncate max-w-[150px]">
-                {orders.length > 0 ? orders[0].category : 'No data'}
-              </span>
+            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'completed' ? "text-white/70" : "text-gray-500")}>
+              Completed Orders
             </p>
+            <p className="text-2xl font-black">{completedOrdersCount}</p>
+            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'completed' ? "text-white/60" : "text-gray-400")}>
+              Delivered and closed
+            </span>
           </div>
-        </div>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1 space-y-4">
-          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <Layers className="text-blue-500" size={20} />
-            {viewMode === 'all' ? 'Order Catalog' : 'Ready for Processing'} ({viewMode === 'all' ? orders.length : pendingOrders.length})
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
+            <Layers className="text-blue-500" size={16} />
+            {selectedSection === 'total' ? 'All Managed Orders' : selectedSection === 'hold' ? 'On Hold Orders' : 'Delivered Catalog'} ({filteredOrders.length})
           </h3>
           <div className="space-y-3">
-            {(viewMode === 'all' ? orders : pendingOrders).length > 0 ? (
-              (viewMode === 'all' ? orders : pendingOrders).map(order => (
+            {filteredOrders.length > 0 ? (
+              filteredOrders.map(order => (
                 <button
                   key={order.id}
                   onClick={() => setSelectedOrder(order)}
@@ -680,60 +1022,144 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
             animate={{ x: 0 }}
             className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col"
           >
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50 text-left">
+            {/* Sidebar Header */}
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-black text-white text-left">
               <div className="flex items-center gap-3">
                 <Logo iconOnly />
                 <div className="text-left">
-                  <h3 className="text-lg font-black text-gray-900 uppercase tracking-tighter">Communicate</h3>
-                  <p className="text-[10px] text-brand-primary font-bold uppercase tracking-widest text-left">To Digitizing Team</p>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-white/90">Communicate to Digitizer</h3>
+                  <p className="text-[10px] text-brand-primary font-bold uppercase tracking-widest text-left">
+                    {selectedOrder ? `Order #${selectedOrder.id.slice(-6)} • ${selectedOrder.customerInfo.name}` : "Interactive Chat"}
+                  </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsMsgSidebarOpen(false)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/75"
               >
-                <Trash2 size={24} className="rotate-45" />
+                <Trash2 size={20} className="rotate-45" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-8 text-left">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left">Instructions to Digitizer</label>
+            {/* Scrollable Chat Feed Area */}
+            <div
+              id="digitizer_chat_scroll"
+              className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50 text-left"
+              style={{ scrollBehavior: 'smooth' }}
+            >
+              {selectedOrder ? (
+                (() => {
+                  const msgs = getCombinedMessages('digitizer');
+                  if (msgs.length === 0) {
+                    return (
+                      <div className="h-full flex flex-col items-center justify-center p-8 text-center text-gray-400">
+                        <MessageSquare className="mx-auto mb-2 opacity-50" size={32} />
+                        <p className="text-xs font-bold uppercase tracking-widest mb-1 text-gray-500">Normal Conversation Thread</p>
+                        <p className="text-xs max-w-xs leading-relaxed text-gray-400">Initialize chat with Digitizing Team below. Messages stay persistent.</p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      {msgs.map((msg, index) => {
+                        const isOM = msg.senderRole === 'order_management';
+                        return (
+                          <div
+                            key={msg.id || index}
+                            className={cn(
+                              "flex flex-col max-w-[85%] rounded-2xl p-4 shadow-sm relative clear-both my-2",
+                              isOM
+                                ? "bg-black text-white ml-auto rounded-tr-none text-right"
+                                : "bg-white text-gray-800 mr-auto rounded-tl-none border border-gray-100 text-left"
+                            )}
+                          >
+                            <div className="flex items-center justify-between mb-1 gap-4">
+                              <span className={cn("text-[9px] font-black uppercase tracking-wider", isOM ? "text-brand-primary" : "text-blue-600")}>
+                                {msg.sender}
+                              </span>
+                              <span className="text-[8px] opacity-60 font-mono">
+                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap text-left break-words">{msg.text}</p>
+
+                            {/* Render message level attachments */}
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-white/10">
+                                {msg.attachments.map((att, i) => (
+                                  <div key={i} className="group relative w-12 h-12 rounded border border-gray-200 overflow-hidden bg-gray-100">
+                                    <img src={att} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                      <button
+                                        onClick={() => setViewingImage(att)}
+                                        className="text-white hover:scale-110 transition-transform"
+                                        title="View"
+                                      >
+                                        <ZoomIn size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
+              ) : (
+                <p className="text-center text-xs text-gray-400">Select an order first</p>
+              )}
+            </div>
+
+            {/* Sidebar Active Inputs Block */}
+            <div className="p-4 border-t border-gray-100 bg-white space-y-3 shrink-0">
+              <div className="space-y-1 text-left">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block">Type Instructions</label>
                 <textarea
-                  rows={6}
-                  className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-primary outline-none text-sm font-medium resize-none shadow-inner"
-                  placeholder="Provide specific details or stitching requirements..."
+                  rows={3}
+                  className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none text-xs font-medium resize-none shadow-inner"
+                  placeholder="Ask a question or specify stitching details here..."
                   value={msgRequest.message}
                   onChange={(e) => setMsgRequest(prev => ({ ...prev, message: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendToDigitizer();
+                    }
+                  }}
                 />
               </div>
 
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left">Share Images/PDFs (Max 100MB)</label>
+              <div className="grid grid-cols-1 gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Share Files</span>
+                  {msgRequest.attachments.length > 0 && (
+                    <span className="text-[9px] text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                      <Check size={10} /> {msgRequest.attachments.length} Ready
+                    </span>
+                  )}
+                </div>
+
                 <FileUpload
-                  label="Upload Artworks"
+                  label="Upload Artwork References"
                   accept="image/*,.pdf"
                   onFilesSelected={(files) => setMsgRequest(prev => ({ ...prev, attachments: files }))}
                 />
-                {msgRequest.attachments.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {msgRequest.attachments.map((_, i) => (
-                      <div key={i} className="px-3 py-1 bg-brand-primary/10 text-brand-primary rounded-lg text-[10px] font-bold uppercase">
-                        File {i + 1} Ready
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
-            </div>
 
-            <div className="p-6 border-t border-gray-100">
               <button
-                disabled={isProcessing || !selectedOrder}
+                disabled={isProcessing || !selectedOrder || (!msgRequest.message.trim() && msgRequest.attachments.length === 0)}
                 onClick={sendToDigitizer}
-                className="w-full py-5 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 active:scale-[0.98]"
+                className="w-full py-3.5 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none active:scale-[0.98] transition-transform text-xs"
               >
-                {isProcessing ? "Processing..." : "Send to Digitizer"}
+                {isProcessing ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Send size={14} />
+                )}
+                <span>Send to Digitizer</span>
               </button>
             </div>
           </motion.div>
@@ -754,60 +1180,144 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
             animate={{ x: 0 }}
             className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col"
           >
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-purple-50 text-left">
+            {/* Sidebar Header */}
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-purple-900 text-white text-left">
               <div className="flex items-center gap-3">
                 <Logo iconOnly />
                 <div className="text-left">
-                  <h3 className="text-lg font-black text-gray-900 uppercase tracking-tighter">Communicate</h3>
-                  <p className="text-[10px] text-purple-600 font-bold uppercase tracking-widest text-left">To Design Team</p>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-white/95">Communicate to Designer</h3>
+                  <p className="text-[10px] text-purple-200 font-bold uppercase tracking-widest text-left">
+                    {selectedOrder ? `Order #${selectedOrder.id.slice(-6)} • ${selectedOrder.customerInfo.name}` : "Interactive Chat"}
+                  </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsDesignMsgSidebarOpen(false)}
-                className="p-2 hover:bg-purple-100 rounded-full transition-colors text-purple-400"
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/75"
               >
-                <Trash2 size={24} className="rotate-45" />
+                <Trash2 size={20} className="rotate-45" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-8 text-left">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left">Instructions to Designer</label>
-                <textarea
-                  rows={6}
-                  className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium resize-none shadow-inner"
-                  placeholder="Provide design, logo placements, sizing, or layout notes..."
-                  value={designMsgRequest.message}
-                  onChange={(e) => setDesignMsgRequest(prev => ({ ...prev, message: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left">Share Design References (Max 100MB)</label>
-                <FileUpload
-                  label="Upload Ref Files (JPG/PNG/PDF)"
-                  accept="image/*,.pdf"
-                  onFilesSelected={(files) => setDesignMsgRequest(prev => ({ ...prev, attachments: files }))}
-                />
-                {designMsgRequest.attachments.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {designMsgRequest.attachments.map((_, i) => (
-                      <div key={i} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-[10px] font-bold uppercase">
-                        File {i + 1} Ready
+            {/* Scrollable Chat Feed Area */}
+            <div
+              id="designer_chat_scroll"
+              className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50 text-left"
+              style={{ scrollBehavior: 'smooth' }}
+            >
+              {selectedOrder ? (
+                (() => {
+                  const msgs = getCombinedMessages('designer');
+                  if (msgs.length === 0) {
+                    return (
+                      <div className="h-full flex flex-col items-center justify-center p-8 text-center text-gray-400">
+                        <MessageSquare className="mx-auto mb-2 text-purple-500 opacity-55" size={32} />
+                        <p className="text-xs font-bold uppercase tracking-widest mb-1 text-purple-700">Normal Conversation Thread</p>
+                        <p className="text-xs max-w-xs leading-relaxed text-gray-400">Initialize design feedback. Updates order in real-time under Design Stage.</p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      {msgs.map((msg, index) => {
+                        const isOM = msg.senderRole === 'order_management';
+                        return (
+                          <div
+                            key={msg.id || index}
+                            className={cn(
+                              "flex flex-col max-w-[85%] rounded-2xl p-4 shadow-sm relative clear-both my-2",
+                              isOM
+                                ? "bg-purple-900 text-white ml-auto rounded-tr-none text-right"
+                                : "bg-white text-gray-800 mr-auto rounded-tl-none border border-gray-100 text-left"
+                            )}
+                          >
+                            <div className="flex items-center justify-between mb-1 gap-4 text-left">
+                              <span className={cn("text-[9px] font-black uppercase tracking-wider", isOM ? "text-purple-300" : "text-purple-700")}>
+                                {msg.sender}
+                              </span>
+                              <span className="text-[8px] opacity-60 font-mono">
+                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap text-left break-words">{msg.text}</p>
+
+                            {/* Render attachments */}
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-purple-100">
+                                {msg.attachments.map((att, i) => (
+                                  <div key={i} className="group relative w-12 h-12 rounded border border-gray-100 overflow-hidden bg-gray-50">
+                                    <img src={att} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                      <button
+                                        onClick={() => setViewingImage(att)}
+                                        className="text-white hover:scale-110 transition-transform"
+                                        title="View"
+                                      >
+                                        <ZoomIn size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
+              ) : (
+                <p className="text-center text-xs text-gray-400">Select an order first</p>
+              )}
             </div>
 
-            <div className="p-6 border-t border-gray-100">
+            {/* Sidebar Active Inputs Block */}
+            <div className="p-4 border-t border-gray-100 bg-white space-y-3 shrink-0">
+              <div className="space-y-1 text-left">
+                <label className="text-[9px] font-black text-purple-900 uppercase tracking-widest block">Type Brand/Design instructions</label>
+                <textarea
+                  rows={3}
+                  className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-600 outline-none text-xs font-medium resize-none shadow-inner"
+                  placeholder="Give placement advice, material comments, or feedback text..."
+                  value={designMsgRequest.message}
+                  onChange={(e) => setDesignMsgRequest(prev => ({ ...prev, message: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendToDesigner();
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Design Files</span>
+                  {designMsgRequest.attachments.length > 0 && (
+                    <span className="text-[9px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                      <Check size={10} /> {designMsgRequest.attachments.length} Ready
+                    </span>
+                  )}
+                </div>
+
+                <FileUpload
+                  label="Upload Brand Guidelines / Refs"
+                  accept="image/*,.pdf text/plain"
+                  onFilesSelected={(files) => setDesignMsgRequest(prev => ({ ...prev, attachments: files }))}
+                />
+              </div>
+
               <button
-                disabled={isProcessing || !selectedOrder}
+                disabled={isProcessing || !selectedOrder || (!designMsgRequest.message.trim() && designMsgRequest.attachments.length === 0)}
                 onClick={sendToDesigner}
-                className="w-full py-5 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-750 transition-all shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 active:scale-[0.98]"
+                className="w-full py-3.5 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none active:scale-[0.98] transition-transform text-xs"
               >
-                {isProcessing ? "Processing..." : "Send to Designer"}
+                {isProcessing ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Send size={14} />
+                )}
+                <span>Send to Design Team</span>
               </button>
             </div>
           </motion.div>

@@ -144,6 +144,7 @@ export interface Order {
   updatedAt: number;
   holdReason?: string;
   previousStatus?: OrderStatus;
+  assignedDesigner?: string;
 }
 
 export interface InventoryMovement {

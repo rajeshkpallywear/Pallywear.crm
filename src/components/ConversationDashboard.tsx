@@ -44,6 +44,7 @@ interface ConversationDashboardProps {
   orders?: Order[];
   onUpdateOrder?: (id: string, updates: Partial<Order>) => Promise<void>;
   onCreateOrder?: (order: Partial<Order>) => Promise<void>;
+  initialSelectedId?: string | null;
 }
 
 const seedConversationsIfNeeded = (): Conversation[] => {
@@ -71,11 +72,18 @@ export default function ConversationDashboard({
   currentUser,
   orders = [],
   onUpdateOrder,
-  onCreateOrder
+  onCreateOrder,
+  initialSelectedId = null
 }: ConversationDashboardProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && initialSelectedId) {
+      setSelectedOrderId(initialSelectedId);
+    }
+  }, [isOpen, initialSelectedId]);
 
   // Order Conversion state
   const [isConvertingToOrder, setIsConvertingToOrder] = useState(false);
@@ -1132,8 +1140,8 @@ export default function ConversationDashboard({
                           <div
                             key={item.id}
                             className={`p-4 rounded-2xl border relative group transition-all duration-200 text-left ${!item.isOrder
-                              ? 'bg-purple-50/20 border-purple-250/70 hover:border-purple-400'
-                              : 'bg-white border-slate-200/60 hover:border-purple-300 shadow-sm hover:shadow'
+                                ? 'bg-purple-50/20 border-purple-250/70 hover:border-purple-400'
+                                : 'bg-white border-slate-200/60 hover:border-purple-300 shadow-sm hover:shadow'
                               }`}
                           >
                             {item.isUrgent && (
@@ -1146,8 +1154,8 @@ export default function ConversationDashboard({
                               <span className="text-[10px] font-mono text-slate-400 font-bold uppercase">#{item.id.slice(-8)}</span>
                               <span className="text-slate-300">•</span>
                               <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${!item.isOrder
-                                ? 'bg-purple-100 text-purple-700'
-                                : 'bg-indigo-50 text-indigo-700'
+                                  ? 'bg-purple-100 text-purple-700'
+                                  : 'bg-indigo-50 text-indigo-700'
                                 }`}>
                                 {item.category}
                               </span>
@@ -1181,8 +1189,8 @@ export default function ConversationDashboard({
                                   </span>
                                 ) : item.assignedDesigner && item.assignedDesigner !== 'Unassigned' ? (
                                   <span className={`text-[9px] font-extrabold uppercase px-2 py-1 rounded-md border ${isMyAssigned
-                                    ? 'text-green-700 bg-green-50 border-green-100'
-                                    : 'text-amber-700 bg-amber-50 border-amber-100'
+                                      ? 'text-green-700 bg-green-50 border-green-100'
+                                      : 'text-amber-700 bg-amber-50 border-amber-100'
                                     }`}>
                                     {isMyAssigned ? 'Active Studio' : `🔒 ${item.assignedDesigner}`}
                                   </span>
@@ -1524,8 +1532,8 @@ export default function ConversationDashboard({
                           <div
                             key={rep.id}
                             className={`p-3 rounded-2xl text-xs text-left ${rep.senderRole === 'designer'
-                              ? 'bg-purple-50/70 border border-purple-100 ml-5'
-                              : 'bg-slate-50 border border-slate-150'
+                                ? 'bg-purple-50/70 border border-purple-100 ml-5'
+                                : 'bg-slate-50 border border-slate-150'
                               }`}
                           >
                             <div className="flex justify-between items-center mb-1">
