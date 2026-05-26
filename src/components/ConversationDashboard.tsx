@@ -8,12 +8,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   MessageSquare, X, Mic, Send, Paperclip, User,
   Clock, Trash2, Download, AlertCircle, Check,
-  Plus, Play, Square, FileText, Image as ImageIcon, Sparkles
+  Plus, Play, Square, FileText, Image as ImageIcon, Sparkles,
+  Search, ArrowLeft, Palette, CheckSquare
 } from 'lucide-react';
 import FileUpload from './FileUpload';
 import imageCompression from 'browser-image-compression';
 import ImageViewer from './ImageViewer';
 import { Order, OrderStatus, UserRole } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { cn } from '../lib/utils';
 
 export interface Reply {
   id: string;
@@ -35,12 +38,14 @@ export interface Conversation {
   voiceNote: string | null;
   createdAt: number;
   replies: Reply[];
+  convertedToOrderId?: string;
+  isUrgent?: boolean;
 }
 
 interface ConversationDashboardProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: { name: string; role: string } | null;
+  currentUser: { name: string; role: string; id?: string } | null;
   orders?: Order[];
   onUpdateOrder?: (id: string, updates: Partial<Order>) => Promise<void>;
   onCreateOrder?: (order: Partial<Order>) => Promise<void>;
@@ -55,7 +60,6 @@ const seedConversationsIfNeeded = (): Conversation[] => {
   }
   try {
     const parsed = JSON.parse(saved);
-    // Force clear old mock/built-in seeds to start with zero default items
     if (parsed.some((c: any) => c.id === 'conv_1' || c.id === 'conv_2' || c.customerName?.includes('Priya') || c.customerName?.includes('Gaurav'))) {
       localStorage.setItem('pallywear_conversations', JSON.stringify([]));
       return [];
@@ -75,15 +79,69 @@ export default function ConversationDashboard({
   onCreateOrder,
   initialSelectedId = null
 }: ConversationDashboardProps) {
+  const { registeredUsers } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedDMUserId, setSelectedDMUserId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [dmsRefreshTrigger, setDmsRefreshTrigger] = useState(0);
 
+  // Sync selection with initialSelectedId
   useEffect(() => {
     if (isOpen && initialSelectedId) {
-      setSelectedOrderId(initialSelectedId);
+      // Check if it is a registered user ID or an order ID
+      const isUser = registeredUsers.some(u => u.id === initialSelectedId);
+      if (isUser) {
+        setSelectedDMUserId(initialSelectedId);
+        setSelectedOrderId(null);
+      } else {
+        setSelectedOrderId(initialSelectedId);
+        setSelectedDMUserId(null);
+      }
     }
-  }, [isOpen, initialSelectedId]);
+  }, [isOpen, initialSelectedId, registeredUsers]);
+
+  // Load consultations
+  useEffect(() => {
+    if (isOpen) {
+      setConversations(seedConversationsIfNeeded());
+    }
+  }, [isOpen]);
+
+  // Sync DMs across tabs
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('pallywear_dms_')) {
+        setDmsRefreshTrigger(prev => prev + 1);
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const saveToStorage = (updatedConv: Conversation[]) => {
+    localStorage.setItem('pallywear_conversations', JSON.stringify(updatedConv));
+    setConversations(updatedConv);
+  };
+
+  // Direct Messaging localStorage helpers
+  const currentUserId = currentUser?.id || 'system_user';
+  
+  const getDMKey = (uid1: string, uid2: string) => {
+    return [uid1, uid2].sort().join('_');
+  };
+
+  const loadDMMessages = (uid1: string, uid2: string): Reply[] => {
+    const key = `pallywear_dms_${getDMKey(uid1, uid2)}`;
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : [];
+  };
+
+  const saveDMMessages = (uid1: string, uid2: string, msgs: Reply[]) => {
+    const key = `pallywear_dms_${getDMKey(uid1, uid2)}`;
+    localStorage.setItem(key, JSON.stringify(msgs));
+  };
 
   // Order Conversion state
   const [isConvertingToOrder, setIsConvertingToOrder] = useState(false);
@@ -127,14 +185,14 @@ export default function ConversationDashboard({
       document.body.removeChild(link);
     } catch (e) {
       console.error('Download failed', e);
-      alert('Failed to trigger download automatically, please view image in HD and download.');
+      alert('Failed to trigger download automatically.');
     }
   };
 
-  // Reply text state mapped by Conversation ID
+  // Reply text state mapped by Conversation ID or DM user ID
   const [replyInput, setReplyInput] = useState<{ [convId: string]: string }>({});
 
-  // Attachments state for inline responses mapped by Conversation ID
+  // Attachments state mapped by Conversation ID or DM user ID
   const [replyAttachments, setReplyAttachments] = useState<{ [convId: string]: { name: string, type: string, data: string }[] }>({});
   const [isReplyCompressing, setIsReplyCompressing] = useState<{ [convId: string]: boolean }>({});
   const [viewImage, setViewImage] = useState<string | null>(null);
@@ -187,22 +245,11 @@ export default function ConversationDashboard({
       const current = prev[convId] || [];
       return {
         ...prev,
-        [convId]: [...current, ...processed].slice(-4) // limit to max 4 files per reply
+        [convId]: [...current, ...processed].slice(-4) // limit to max 4 files
       };
     });
     setIsReplyCompressing(prev => ({ ...prev, [convId]: false }));
     if (e.target) e.target.value = '';
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      setConversations(seedConversationsIfNeeded());
-    }
-  }, [isOpen]);
-
-  const saveToStorage = (updatedConv: Conversation[]) => {
-    localStorage.setItem('pallywear_conversations', JSON.stringify(updatedConv));
-    setConversations(updatedConv);
   };
 
   const generateSimulatedVoiceBlob = (): Blob => {
@@ -294,7 +341,6 @@ export default function ConversationDashboard({
       const reader = new FileReader();
       reader.onloadend = () => {
         setVoiceNoteBase64(reader.result as string);
-        alert('Notice: Voice recording is simulated for instant preview inside the web iframe environment.');
       };
       reader.readAsDataURL(testBlob);
     } catch (e) {
@@ -327,6 +373,7 @@ export default function ConversationDashboard({
     }
   };
 
+  // Reply handlers
   const handleSendReply = (convId: string) => {
     const text = replyInput[convId] || '';
     const attachments = replyAttachments[convId] || [];
@@ -397,6 +444,45 @@ export default function ConversationDashboard({
     setVoiceNoteBase64(null);
   };
 
+  // Direct Message Sending
+  const handleSendDM = () => {
+    if (!selectedDMUserId) return;
+    const text = replyInput[selectedDMUserId] || '';
+    const attachments = replyAttachments[selectedDMUserId] || [];
+
+    if (!text.trim() && attachments.length === 0 && !voiceNoteBase64) return;
+
+    const messages = loadDMMessages(currentUserId, selectedDMUserId);
+    const images: string[] = [];
+    const pdfs: string[] = [];
+
+    attachments.forEach((att) => {
+      if (att.type.startsWith('image/') || att.data.startsWith('data:image')) {
+        images.push(att.data);
+      } else {
+        pdfs.push(att.data);
+      }
+    });
+
+    const newReply: Reply = {
+      id: `dm_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+      senderName: currentUser?.name || 'User',
+      senderRole: currentUser?.role || 'user',
+      message: text.trim(),
+      createdAt: Date.now(),
+      imageAttachments: images.length > 0 ? images : undefined,
+      pdfAttachments: pdfs.length > 0 ? pdfs : undefined
+    };
+
+    const updated = [...messages, newReply];
+    saveDMMessages(currentUserId, selectedDMUserId, updated);
+
+    setDmsRefreshTrigger(prev => prev + 1);
+    setReplyInput(prev => ({ ...prev, [selectedDMUserId]: '' }));
+    setReplyAttachments(prev => ({ ...prev, [selectedDMUserId]: [] }));
+    setVoiceNoteBase64(null);
+  };
+
   const handleFinishAndSendToStaff = async (orderId: string) => {
     if (!onUpdateOrder) return;
     const orderMatch = orders.find(o => o.id === orderId);
@@ -404,7 +490,6 @@ export default function ConversationDashboard({
 
     setIsProcessing(true);
     try {
-      // Collect design attachments & machine files uploaded in the replies
       const activeConv = conversations.find(c => c.id === orderId);
       const outputImages: string[] = [];
       const outputPdfs: string[] = [];
@@ -424,10 +509,10 @@ export default function ConversationDashboard({
       });
 
       setSelectedOrderId(null);
-      alert('Success: Artwork finished and sent to Staff/Accounts. Showing remaining balance art.');
+      alert('Success: Artwork finished and sent to Staff/Accounts.');
     } catch (err) {
       console.error(err);
-      alert('An error occurred while moving the order.');
+      alert('An error occurred.');
     } finally {
       setIsProcessing(false);
     }
@@ -473,7 +558,6 @@ export default function ConversationDashboard({
       const reader = new FileReader();
       reader.onloadend = () => {
         setConsultVoiceNote(reader.result as string);
-        alert('Notice: Voice recording is simulated for instant preview inside the web iframe environment.');
       };
       reader.readAsDataURL(testBlob);
     } catch (e) {
@@ -505,7 +589,7 @@ export default function ConversationDashboard({
         let fileToProcess: File | Blob = file;
         if (file.type.startsWith('image/')) {
           const options = {
-            maxSizeMB: 0.1, // compress down to ~100KB for localstorage efficiency
+            maxSizeMB: 0.1,
             maxWidthOrHeight: 1280,
             useWebWorker: true,
           };
@@ -564,17 +648,17 @@ export default function ConversationDashboard({
       };
 
       const updatedConvs = [newConv, ...currentConvs];
-      localStorage.setItem('pallywear_conversations', JSON.stringify(updatedConvs));
-      setConversations(updatedConvs);
+      saveToStorage(updatedConvs);
 
-      // Reset Form State
+      // Reset
       setIsCreatingConsult(false);
       setConsultCustomerName('');
       setConsultDescription('');
       setConsultImageAttachments([]);
       setConsultVoiceNote(null);
 
-      alert(`Success: Consultation conversation started for ${consultCustomerName.trim()}! Designers can now view and reply with mockups.`);
+      setSelectedOrderId(conversationId);
+      alert(`Success: Consultation conversation started for ${consultCustomerName.trim()}!`);
     } catch (err: any) {
       console.error(err);
       alert('Failed to start design consultation.');
@@ -596,7 +680,6 @@ export default function ConversationDashboard({
     setConvAdvancePay(500);
     setConvIsUrgent(selectedFeedItem.isUrgent || false);
 
-    // Auto-gather design mockups uploaded by designers in this thread
     const designerReplyImages: string[] = [];
     if (activeChatConv?.replies) {
       activeChatConv.replies.forEach(r => {
@@ -621,7 +704,6 @@ export default function ConversationDashboard({
 
     setIsProcessing(true);
     const newOrderId = `ORD_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-
     const originalImages = selectedFeedItem.imageAttachments || [];
     const chosenImages = selectedDesignerImages.length > 0 ? selectedDesignerImages : originalImages;
 
@@ -693,10 +775,10 @@ export default function ConversationDashboard({
 
       setIsConvertingToOrder(false);
       setSelectedOrderId(newOrderId);
-      alert(`Success: Formal order #${newOrderId} created successfully! All files have been moved to the design order stream.`);
+      alert(`Success: Formal order #${newOrderId} created successfully!`);
     } catch (err: any) {
       console.error(err);
-      alert('Failed to convert conversation to formal order.');
+      alert('Failed to convert conversation.');
     } finally {
       setIsProcessing(false);
     }
@@ -706,15 +788,14 @@ export default function ConversationDashboard({
 
   const isDesigner = currentUser?.role && ['designer', 'DESIGNER', UserRole.DESIGNER].includes(currentUser.role as any);
 
-  // Filter orders needing design work
+  // Filter design orders
   const pendingOrders = (orders || []).filter(o => {
     const s = (o.status as string).toLowerCase();
     return s === 'design' || s === 'hold';
   });
 
-  // Keep if not assigned, OR if assigned to me. Hide if assigned to another designer.
   const visibleOrders = pendingOrders.filter(order => {
-    if (!isDesigner) return true; // staff/admins see everything
+    if (!isDesigner) return true;
     if (!order.assignedDesigner) return true;
     const cleanAssigned = order.assignedDesigner.trim().toLowerCase();
     const cleanUser = (currentUser?.name || '').trim().toLowerCase();
@@ -725,7 +806,8 @@ export default function ConversationDashboard({
     !orders.some(o => o.id === c.id)
   );
 
-  const feedItems = [
+  // Build design channels feed items
+  const designFeedItems = [
     ...pureConversations.map(c => ({
       id: c.id,
       isOrder: false,
@@ -733,7 +815,7 @@ export default function ConversationDashboard({
       category: 'Pure Conversation',
       qty: 0,
       message: c.message,
-      isUrgent: false,
+      isUrgent: c.isUrgent || false,
       statusText: c.convertedToOrderId ? 'Converted' : 'Discussion Only',
       assignedDesigner: c.staffName || 'Unassigned',
       createdAt: c.createdAt,
@@ -763,7 +845,7 @@ export default function ConversationDashboard({
     })
   ].sort((a, b) => b.createdAt - a.createdAt);
 
-  const visibleFeedItems = feedItems.filter(item => {
+  const visibleFeedItems = designFeedItems.filter(item => {
     if (!isDesigner) return true;
     if (item.assignedDesigner === 'Unassigned' || !item.assignedDesigner || item.assignedDesigner === 'Designer assigned') return true;
     const cleanAssigned = item.assignedDesigner.trim().toLowerCase();
@@ -772,7 +854,6 @@ export default function ConversationDashboard({
   });
 
   const selectedFeedItem = visibleFeedItems.find(o => o.id === selectedOrderId);
-  const selectedOrder = visibleOrders.find(o => o.id === selectedOrderId);
   const selectedOrderReal = visibleOrders.find(o => o.id === selectedOrderId);
 
   const activeChatConv = selectedOrderId ? (conversations.find(c => c.id === selectedOrderId) || {
@@ -787,6 +868,78 @@ export default function ConversationDashboard({
     replies: []
   }) : null;
 
+  // DIRECT MESSAGES LOGIC
+  const activeDMUserIds = Object.keys(localStorage)
+    .filter(key => key.startsWith('pallywear_dms_'))
+    .map(key => {
+      const parts = key.replace('pallywear_dms_', '').split('_');
+      return parts.find(id => id !== currentUserId);
+    })
+    .filter(Boolean) as string[];
+
+  const activeDMUsers = registeredUsers.filter(u => {
+    if (u.id === currentUserId) return false;
+    return activeDMUserIds.includes(u.id) || loadDMMessages(currentUserId, u.id).length > 0;
+  });
+
+  // Construct unified chats feed for left panel
+  const unifiedChatsList = [
+    ...visibleFeedItems.map(item => ({
+      type: 'design' as const,
+      id: item.id,
+      title: `${item.customerName} (${item.isOrder ? 'Order' : 'Consult'})`,
+      subtitle: item.message,
+      category: item.category,
+      isUrgent: item.isUrgent,
+      statusText: item.statusText,
+      assignedDesigner: item.assignedDesigner,
+      createdAt: item.createdAt,
+      avatar: `https://ui-avatars.com/api/?name=${item.customerName}&background=4D109E&color=fff`
+    })),
+    ...activeDMUsers.map(u => {
+      const msgs = loadDMMessages(currentUserId, u.id);
+      const lastMsg = msgs[msgs.length - 1];
+      return {
+        type: 'dm' as const,
+        id: u.id,
+        title: u.name,
+        subtitle: lastMsg ? lastMsg.message : 'Start chatting...',
+        category: u.role,
+        isUrgent: false,
+        statusText: u.role?.replace('_', ' ') || 'User',
+        assignedDesigner: '',
+        createdAt: lastMsg ? lastMsg.createdAt : Number(u.createdAt) || Date.now(),
+        avatar: u.avatar || `https://ui-avatars.com/api/?name=${u.name}&background=1A0B91&color=fff`
+      };
+    })
+  ].sort((a, b) => b.createdAt - a.createdAt);
+
+  const filteredUnifiedList = unifiedChatsList.filter(chat => {
+    const q = searchQuery.toLowerCase();
+    return chat.title.toLowerCase().includes(q) || chat.subtitle.toLowerCase().includes(q) || chat.statusText.toLowerCase().includes(q);
+  });
+
+  // Users not yet in active DM chats matching search query
+  const matchingOtherUsers = registeredUsers.filter(u => {
+    if (u.id === currentUserId) return false;
+    if (activeDMUsers.some(au => au.id === u.id)) return false;
+    const q = searchQuery.toLowerCase();
+    return q && (u.name.toLowerCase().includes(q) || u.role.toLowerCase().includes(q));
+  });
+
+  const activeDMUser = selectedDMUserId ? registeredUsers.find(u => u.id === selectedDMUserId) : null;
+  const activeDMMessages = selectedDMUserId ? loadDMMessages(currentUserId, selectedDMUserId) : [];
+
+  const handleSendActiveChat = () => {
+    if (selectedOrderId) {
+      handleSendReply(selectedOrderId);
+    } else if (selectedDMUserId) {
+      handleSendDM();
+    }
+  };
+
+  const activeChatId = selectedOrderId || selectedDMUserId;
+
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
       {/* Backdrop */}
@@ -798,709 +951,425 @@ export default function ConversationDashboard({
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
       />
 
-      {/* Slideout Panel */}
+      {/* Slideout Panel - WhatsApp Split Vibe */}
       <motion.div
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-        className="relative w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col z-10 border-l border-slate-200"
+        className="relative md:w-[800px] lg:w-[960px] xl:w-[1100px] w-full bg-[#f0f2f5] h-full shadow-2xl flex z-10 border-l border-slate-200 overflow-hidden"
       >
-        {/* Header Block */}
-        <div className="p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-              <MessageSquare size={20} />
+        {/* Left Side Pane - Chat List / Search */}
+        <div className={cn(
+          "w-full md:w-[320px] lg:w-[360px] bg-white border-r border-slate-250 flex flex-col h-full shrink-0",
+          activeChatId ? "hidden md:flex" : "flex"
+        )}>
+          {/* Left Header */}
+          <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow">
+                PW
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-widest text-purple-300">Pallywear</h3>
+                <p className="text-[10px] text-slate-300 font-bold uppercase">Workspace Inbox</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-purple-300">
-                {selectedOrderId
-                  ? (isDesigner ? "Artwork Workspace" : "Design Consultation")
-                  : (isDesigner ? "Pending Art Studio" : "Talk to Design Team")}
-              </h3>
-              <p className="text-[10px] text-slate-300 font-bold uppercase tracking-tight">
-                {selectedOrderId
-                  ? `Active session • ID #${selectedOrderId.slice(-8)}`
-                  : (isDesigner ? `Balance Artworks: ${visibleOrders.length}` : `Active Design Orders: ${visibleOrders.length}`)}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {selectedOrderId && (
-              <button
-                onClick={() => setSelectedOrderId(null)}
-                className="px-3 py-1.5 bg-slate-800 text-slate-200 hover:bg-slate-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-700 transition"
-              >
-                ← Balance List
-              </button>
-            )}
             <button
               onClick={onClose}
-              className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition"
+              className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
+          </div>
+
+          {/* Search bar & Start Consult */}
+          <div className="p-3 border-b border-slate-100 flex flex-col gap-2 shrink-0 bg-slate-50">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <input
+                type="text"
+                placeholder="Search or start new chat..."
+                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-medium placeholder:text-slate-400 text-slate-700"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            {/* Create consultation button (Only for non-designers) */}
+            {!isDesigner && (
+              <button
+                onClick={() => {
+                  setIsCreatingConsult(true);
+                  setSelectedOrderId(null);
+                  setSelectedDMUserId(null);
+                }}
+                className="w-full py-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-xl flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-wider transition-all"
+              >
+                <Plus size={12} className="stroke-[3]" />
+                <span>Start New Consult</span>
+              </button>
+            )}
+          </div>
+
+          {/* Chat List Scroll Container */}
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+            {/* Active List */}
+            {filteredUnifiedList.map((chat) => {
+              const isSelected = chat.type === 'design' ? selectedOrderId === chat.id : selectedDMUserId === chat.id;
+              return (
+                <button
+                  key={chat.id}
+                  onClick={() => {
+                    setIsCreatingConsult(false);
+                    setIsConvertingToOrder(false);
+                    if (chat.type === 'design') {
+                      setSelectedOrderId(chat.id);
+                      setSelectedDMUserId(null);
+                    } else {
+                      setSelectedDMUserId(chat.id);
+                      setSelectedOrderId(null);
+                    }
+                  }}
+                  className={cn(
+                    "w-full p-4 flex gap-3 text-left transition-all relative",
+                    isSelected ? "bg-slate-100/80 border-l-4 border-purple-600 pl-3" : "hover:bg-slate-50 bg-white"
+                  )}
+                >
+                  <img
+                    src={chat.avatar}
+                    alt={chat.title}
+                    className="w-10 h-10 rounded-full border border-slate-100 flex-shrink-0 object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex justify-between items-baseline mb-0.5">
+                      <h4 className="text-xs font-black text-slate-800 truncate pr-2">{chat.title}</h4>
+                      <span className="text-[9px] text-slate-400 font-semibold tabular-nums">
+                        {new Date(chat.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 truncate">
+                      {chat.statusText}
+                    </p>
+                    <p className="text-[11px] text-slate-500 font-medium truncate pr-1">
+                      {chat.subtitle}
+                    </p>
+                  </div>
+                  {chat.isUrgent && (
+                    <span className="absolute top-4 right-4 w-2 h-2 bg-red-500 rounded-full animate-ping" />
+                  )}
+                </button>
+              );
+            })}
+
+            {/* Other Users to start chat */}
+            {matchingOtherUsers.length > 0 && (
+              <div>
+                <div className="px-4 py-2 bg-slate-50 text-[9px] font-black uppercase text-slate-400 tracking-widest border-y border-slate-100">
+                  Start New Chat
+                </div>
+                {matchingOtherUsers.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => {
+                      setIsCreatingConsult(false);
+                      setIsConvertingToOrder(false);
+                      setSelectedDMUserId(u.id);
+                      setSelectedOrderId(null);
+                      setSearchQuery('');
+                    }}
+                    className="w-full p-4 flex gap-3 items-center text-left hover:bg-slate-50 bg-white transition-all"
+                  >
+                    <img
+                      src={u.avatar || `https://ui-avatars.com/api/?name=${u.name}&background=1A0B91&color=fff`}
+                      alt={u.name}
+                      className="w-9 h-9 rounded-full border border-slate-100 flex-shrink-0 object-cover"
+                    />
+                    <div>
+                      <h4 className="text-xs font-black text-slate-800">{u.name}</h4>
+                      <p className="text-[9px] text-purple-600 font-extrabold uppercase mt-0.5 tracking-wider">
+                        {u.role?.replace('_', ' ')}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {filteredUnifiedList.length === 0 && matchingOtherUsers.length === 0 && (
+              <div className="p-8 text-center text-slate-400 italic text-xs">
+                No active conversations or users found.
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Dynamic Content Body */}
-        <div className="flex-1 overflow-y-auto bg-slate-50/60 p-5 font-sans">
-          {!selectedOrderId ? (
-            /* ================== LIST MODE: ALL PENDING ARTWORKS ================== */
-            <div className="space-y-4 text-left">
-
-              {/* ================== NEW CONSULT FORM MODE ================== */}
-              {isCreatingConsult ? (
-                <div className="space-y-5 text-left bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div>
-                      <h4 className="text-xs font-black uppercase text-purple-700 tracking-widest">Artist Intake Form</h4>
-                      <p className="text-[10px] text-slate-500 font-semibold">Initiate a custom pattern design request</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCreatingConsult(false);
-                        setConsultCustomerName('');
-                        setConsultDescription('');
-                        setConsultImageAttachments([]);
-                        setConsultVoiceNote(null);
-                      }}
-                      className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full transition"
-                      title="Discard Request"
-                    >
-                      <X size={16} />
-                    </button>
+        {/* Right Side Main Area - Active Thread or Blank Splash */}
+        <div className={cn(
+          "flex-1 flex flex-col h-full bg-[#efeae2] relative",
+          !activeChatId && !isCreatingConsult ? "hidden md:flex" : "flex"
+        )}>
+          {/* Consultation Intake Form Overlay in Right Pane */}
+          {isCreatingConsult ? (
+            <div className="flex-1 flex flex-col bg-white h-full text-left">
+              <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Palette size={18} className="text-purple-400" />
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-purple-300 tracking-widest">Artist Intake Form</h4>
+                    <p className="text-[10px] text-slate-300">Initiate a custom pattern design request</p>
                   </div>
+                </div>
+                <button
+                  onClick={() => setIsCreatingConsult(false)}
+                  className="p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
-                  <div className="space-y-4">
-                    {/* Customer Name */}
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
-                        Customer Name <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                          <User size={14} />
-                        </span>
-                        <input
-                          type="text"
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-bold placeholder:text-slate-400 text-slate-800"
-                          placeholder="e.g. Gaurav Nair / Pallywear Custom"
-                          value={consultCustomerName}
-                          onChange={(e) => setConsultCustomerName(e.target.value)}
-                        />
-                      </div>
-                    </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
+                    Customer Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-bold text-slate-800"
+                    placeholder="e.g. Gaurav Nair"
+                    value={consultCustomerName}
+                    onChange={(e) => setConsultCustomerName(e.target.value)}
+                  />
+                </div>
 
-                    {/* Description */}
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5 font-sans font-medium">
-                        Design Concept / Description Idea brief
-                      </label>
-                      <textarea
-                        rows={3}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-medium placeholder:text-slate-400 text-slate-700 resize-none leading-relaxed"
-                        placeholder="Specify layout, printing size, sleeve designs, colours, reference details..."
-                        value={consultDescription}
-                        onChange={(e) => setConsultDescription(e.target.value)}
-                      />
-                    </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
+                    Design Concept / Idea description
+                  </label>
+                  <textarea
+                    rows={4}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-medium text-slate-700 resize-none"
+                    placeholder="Specify sleeve designs, colours, reference details..."
+                    value={consultDescription}
+                    onChange={(e) => setConsultDescription(e.target.value)}
+                  />
+                </div>
 
-                    {/* Image attachments upload */}
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
-                        Upload Reference Images
-                      </label>
-
-                      {consultImageAttachments.length > 0 && (
-                        <div className="grid grid-cols-2 gap-2 mb-2">
-                          {consultImageAttachments.map((img, idx) => (
-                            <div key={idx} className="relative aspect-[4/3] rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
-                              <img src={img} alt="ref preview" className="w-full h-full object-cover" />
-                              <button
-                                type="button"
-                                onClick={() => setConsultImageAttachments(prev => prev.filter((_, i) => i !== idx))}
-                                className="absolute top-1.5 right-1.5 bg-red-600 text-white p-1 rounded-full shadow hover:bg-red-700 transition"
-                              >
-                                <X size={10} className="stroke-[3]" />
-                              </button>
-                            </div>
-                          ))}
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
+                    Upload Reference Images
+                  </label>
+                  {consultImageAttachments.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      {consultImageAttachments.map((img, idx) => (
+                        <div key={idx} className="relative aspect-[4/3] rounded-xl border border-slate-200 overflow-hidden">
+                          <img src={img} alt="ref" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setConsultImageAttachments(prev => prev.filter((_, i) => i !== idx))}
+                            className="absolute top-1 right-1 bg-red-650 text-white p-1 rounded-full hover:bg-red-750"
+                          >
+                            <X size={10} />
+                          </button>
                         </div>
-                      )}
+                      ))}
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    id="right-pane-consult-image-input"
+                    accept="image/*"
+                    className="hidden"
+                    multiple
+                    onChange={handleConsultImageChange}
+                  />
+                  <button
+                    type="button"
+                    disabled={isConsultCompressing}
+                    onClick={() => document.getElementById('right-pane-consult-image-input')?.click()}
+                    className="w-full py-2.5 border border-dashed border-purple-200 hover:border-purple-400 bg-purple-50/20 rounded-xl flex items-center justify-center gap-2 text-[10px] font-black uppercase text-purple-700 tracking-wider"
+                  >
+                    {isConsultCompressing ? "Optimizing files..." : "Upload Artwork Reference"}
+                  </button>
+                </div>
 
-                      <input
-                        type="file"
-                        id="consult-image-input"
-                        accept="image/*"
-                        className="hidden"
-                        multiple
-                        onChange={handleConsultImageChange}
-                      />
-
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
+                    Speech brief / Voice note
+                  </label>
+                  {consultVoiceNote ? (
+                    <div className="bg-purple-50 p-3 rounded-xl flex justify-between items-center">
+                      <audio src={consultVoiceNote} controls className="h-8 max-w-[200px]" />
                       <button
                         type="button"
-                        disabled={isConsultCompressing}
-                        onClick={() => document.getElementById('consult-image-input')?.click()}
-                        className="w-full py-2.5 border border-dashed border-purple-200 hover:border-purple-400 bg-purple-50/20 hover:bg-purple-50/50 rounded-xl flex items-center justify-center gap-2 text-[10px] font-black uppercase text-purple-700 tracking-wider transition-all animate-none"
+                        onClick={() => setConsultVoiceNote(null)}
+                        className="text-[9px] text-red-600 font-extrabold uppercase"
                       >
-                        {isConsultCompressing ? (
-                          <>
-                            <span className="w-3 h-3 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                            <span>Optimizing files...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Plus size={14} className="stroke-[3]" />
-                            <ImageIcon size={14} />
-                            <span>{consultImageAttachments.length > 0 ? "Add More Images" : "Upload Reference Artwork"}</span>
-                          </>
-                        )}
+                        Delete
                       </button>
                     </div>
-
-                    {/* Audio / Voice note Briefing */}
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
-                        Speech briefing / Voice Note
-                      </label>
-
-                      {consultVoiceNote ? (
-                        <div className="bg-purple-50 border border-purple-150 p-3 rounded-xl space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-black text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
-                              <Mic size={12} className="animate-pulse text-purple-600" />
-                              Speech Brief Loaded
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setConsultVoiceNote(null)}
-                              className="text-[9px] text-red-600 hover:text-red-700 font-extrabold uppercase tracking-wider"
-                            >
-                              Delete Note
-                            </button>
-                          </div>
-                          <audio src={consultVoiceNote} controls className="w-full h-8 text-xs bg-white rounded-lg p-0.5" />
-                        </div>
-                      ) : (
-                        <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-3">
-                          {isConsultRecording ? (
-                            <div className="flex flex-col items-center justify-center py-2 text-center space-y-2">
-                              <div className="flex items-center gap-1">
-                                <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping" />
-                                <span className="w-2.5 h-2.5 absolute rounded-full bg-red-600" />
-                                <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest pl-2">Recording active</span>
-                              </div>
-                              <div className="flex items-center gap-0.5 h-6">
-                                <span className="w-1 h-3 bg-red-500 rounded animate-pulse" />
-                                <span className="w-1 h-5 bg-red-500 rounded animate-pulse [animation-delay:0.1s]" />
-                                <span className="w-1 h-2 bg-red-500 rounded animate-pulse [animation-delay:0.2s]" />
-                                <span className="w-1 h-6 bg-red-500 rounded animate-pulse [animation-delay:0.3s]" />
-                                <span className="w-1 h-3 bg-red-500 rounded animate-pulse [animation-delay:0.4s]" />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={stopConsultRecording}
-                                className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition active:scale-95"
-                              >
-                                Stop & Process Recording
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-between gap-3">
-                              <button
-                                type="button"
-                                onClick={startConsultRecording}
-                                className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-wider transition active:scale-95 shadow"
-                              >
-                                <Mic size={14} className="stroke-[3]" />
-                                Record Brief
-                              </button>
-
-                              <input
-                                type="file"
-                                id="consult-audio-input"
-                                accept="audio/*"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  if (file.size > 15 * 1024 * 1024) {
-                                    alert("File size is too large (max 15MB).");
-                                    return;
-                                  }
-                                  const reader = new FileReader();
-                                  reader.onloadend = () => {
-                                    setConsultVoiceNote(reader.result as string);
-                                  };
-                                  reader.readAsDataURL(file);
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => document.getElementById('consult-audio-input')?.click()}
-                                className="flex-1 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-wider hover:bg-slate-50 transition"
-                              >
-                                <Paperclip size={14} />
-                                Upload Audio File
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                    <button
-                      type="button"
-                      disabled={isProcessing}
-                      onClick={() => {
-                        setIsCreatingConsult(false);
-                        setConsultCustomerName('');
-                        setConsultDescription('');
-                        setConsultImageAttachments([]);
-                        setConsultVoiceNote(null);
-                      }}
-                      className="px-4 py-2 border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-slate-50 transition"
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isProcessing}
-                      onClick={handleCreateConsultation}
-                      className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:shadow-lg transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      {isProcessing ? (
-                        <>
-                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>Sending...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Send size={12} />
-                          <span>Launch Consultation</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100/70 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-black text-purple-900 uppercase tracking-wider block">
-                        {isDesigner ? "Remaining Balance Arts & Chats" : "Talk to Design Team"}
-                      </h4>
-                      <span className="text-[10px] text-purple-700 mt-0.5 block">
-                        {isDesigner ? "Assigned to you or unassigned for claiming" : "Active chat discussions and design orders"}
-                      </span>
-                    </div>
-                    <div className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-black tabular-nums">
-                      {visibleFeedItems.length} {isDesigner ? "Left" : "Active"}
-                    </div>
-                  </div>
-
-                  {!isDesigner && (
-                    <button
-                      onClick={() => setIsCreatingConsult(true)}
-                      className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider transition-all duration-200 shadow-md active:scale-[0.98] border border-purple-500/10 mb-2 font-sans"
-                    >
-                      <Plus size={16} className="stroke-[3]" />
-                      <span>Start New Consult Form</span>
-                    </button>
-                  )}
-
-                  {visibleFeedItems.length === 0 ? (
-                    <div className="text-center py-16 bg-white border border-dashed border-slate-200 rounded-3xl p-6">
-                      <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Check className="text-green-500 stroke-[3]" size={22} />
-                      </div>
-                      <p className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                        {isDesigner ? "No Pending Artwork Balance" : "No Outstanding Chats"}
-                      </p>
-                      <p className="text-[10px] text-slate-400 mt-1 max-w-xs mx-auto">
-                        {isDesigner
-                          ? "All design assignments matches have been claimed and finished successfully."
-                          : "There are currently no active discussions or orders requiring feedback."}
-                      </p>
-                    </div>
                   ) : (
-                    <div className="space-y-3">
-                      {visibleFeedItems.map((item) => {
-                        const isMyAssigned = item.assignedDesigner &&
-                          (item.assignedDesigner.toLowerCase().includes((currentUser?.name || '').toLowerCase()) ||
-                            (currentUser?.name || '').toLowerCase().includes(item.assignedDesigner.toLowerCase()));
-
-                        return (
-                          <div
-                            key={item.id}
-                            className={`p-4 rounded-2xl border relative group transition-all duration-200 text-left ${!item.isOrder
-                                ? 'bg-purple-50/20 border-purple-250/70 hover:border-purple-400'
-                                : 'bg-white border-slate-200/60 hover:border-purple-300 shadow-sm hover:shadow'
-                              }`}
+                    <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 flex gap-2">
+                      {isConsultRecording ? (
+                        <div className="flex-1 flex flex-col items-center py-1">
+                          <span className="text-[10px] font-bold text-red-650 animate-pulse">Recording Brief...</span>
+                          <button
+                            type="button"
+                            onClick={stopConsultRecording}
+                            className="mt-2 px-3 py-1 bg-red-650 text-white rounded text-[9px] font-bold uppercase"
                           >
-                            {item.isUrgent && (
-                              <span className="absolute top-4 right-4 bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded tracking-widest uppercase animate-pulse">
-                                URGENT
-                              </span>
-                            )}
-
-                            <div className="flex items-center gap-2 mb-2 flex-wrap">
-                              <span className="text-[10px] font-mono text-slate-400 font-bold uppercase">#{item.id.slice(-8)}</span>
-                              <span className="text-slate-300">•</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${!item.isOrder
-                                  ? 'bg-purple-100 text-purple-700'
-                                  : 'bg-indigo-50 text-indigo-700'
-                                }`}>
-                                {item.category}
-                              </span>
-                              {!item.isOrder && (
-                                <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[8px] font-black uppercase tracking-wider">
-                                  Inquiry Chat
-                                </span>
-                              )}
-                            </div>
-
-                            <h4 className="text-sm font-black text-slate-900 leading-tight mb-1">
-                              {item.customerName}
-                            </h4>
-
-                            <p className="text-[10px] text-slate-500 font-semibold mb-3 truncate max-w-md">
-                              {item.isOrder
-                                ? `Details: Qty ${item.qty} • Spec: ${item.message}`
-                                : `Inquiry discussion: "${item.message}"`}
-                            </p>
-
-                            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
-                              {/* Assignment Pill badge */}
-                              <div>
-                                {item.statusText === 'Converted' ? (
-                                  <span className="text-[9px] font-extrabold uppercase text-green-700 bg-green-50 px-2 py-1 rounded-md border border-green-150">
-                                    🟢 Converted to Order
-                                  </span>
-                                ) : item.statusText === 'On Hold' ? (
-                                  <span className="text-[9px] font-extrabold uppercase text-red-600 bg-red-50 px-2 py-1 rounded-md border border-red-100 animate-pulse">
-                                    On Hold
-                                  </span>
-                                ) : item.assignedDesigner && item.assignedDesigner !== 'Unassigned' ? (
-                                  <span className={`text-[9px] font-extrabold uppercase px-2 py-1 rounded-md border ${isMyAssigned
-                                      ? 'text-green-700 bg-green-50 border-green-100'
-                                      : 'text-amber-700 bg-amber-50 border-amber-100'
-                                    }`}>
-                                    {isMyAssigned ? 'Active Studio' : `🔒 ${item.assignedDesigner}`}
-                                  </span>
-                                ) : (
-                                  <span className="text-[9px] font-extrabold uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
-                                    Unassigned Chat
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex gap-2">
-                                {!isDesigner ? (
-                                  <button
-                                    onClick={() => setSelectedOrderId(item.id)}
-                                    className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition active:scale-95 shadow-sm"
-                                  >
-                                    Open Chat
-                                  </button>
-                                ) : !item.assignedDesigner ? (
-                                  <button
-                                    disabled={isProcessing}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleTakeArt(item.id);
-                                    }}
-                                    className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition active:scale-95 disabled:opacity-50 shadow-sm"
-                                  >
-                                    {isProcessing ? "claiming..." : "claim chat"}
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => setSelectedOrderId(item.id)}
-                                    className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition active:scale-95"
-                                  >
-                                    {isMyAssigned ? "Open Chat" : "View Specs"}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                            Stop
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={startConsultRecording}
+                            className="flex-1 py-2 bg-purple-650 text-white rounded-xl text-[10px] font-bold uppercase"
+                          >
+                            Record Voice
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const testBlob = generateSimulatedVoiceBlob();
+                              const reader = new FileReader();
+                              reader.onloadend = () => setConsultVoiceNote(reader.result as string);
+                              reader.readAsDataURL(testBlob);
+                            }}
+                            className="flex-1 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-[10px] font-bold uppercase"
+                          >
+                            Simulate Voice
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
-                </>
-              )}
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingConsult(false)}
+                  className="px-4 py-2 border border-slate-250 text-slate-500 rounded-xl text-[10px] font-black uppercase"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={handleCreateConsultation}
+                  className="px-5 py-2 bg-purple-600 text-white rounded-xl text-[10px] font-black uppercase"
+                >
+                  Launch Consultation
+                </button>
+              </div>
             </div>
-          ) : (
-            /* ================== WORKSPACE MODE: DETAILED VIEW + CHAT CHANNEL ================== */
-            <div className="space-y-5 text-left bg-transparent">
-              {isConvertingToOrder ? (
-                /* ================== ORDER CONVERSION FORM ================== */
-                <div className="space-y-4 text-left bg-white border border-slate-200 rounded-2xl p-5 shadow-sm font-sans">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div>
-                      <h4 className="text-xs font-black uppercase text-purple-700 tracking-widest">Book Formal Production Order</h4>
-                      <p className="text-[10px] text-slate-500 font-semibold">Transform this conversation into an official production order</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsConvertingToOrder(false)}
-                      className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full transition"
-                      title="Back to discussion"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Customer Name (ReadOnly) */}
-                    <div className="col-span-2">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">Customer Name</label>
-                      <input
-                        type="text"
-                        className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none"
-                        value={selectedFeedItem?.customerName || ''}
-                        disabled
-                      />
-                    </div>
-
-                    {/* Customer Contact Details */}
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-wide block mb-1">Customer Phone</label>
-                      <input
-                        type="text"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-purple-400"
-                        placeholder="+91 XXXXX XXXXX"
-                        value={convPhone}
-                        onChange={(e) => setConvPhone(e.target.value)}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-wide block mb-1">Customer Address</label>
-                      <input
-                        type="text"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-purple-400"
-                        placeholder="Delivery City/Address"
-                        value={convAddress}
-                        onChange={(e) => setConvAddress(e.target.value)}
-                      />
-                    </div>
-
-                    {/* Category Selection */}
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-wide block mb-1">Category</label>
-                      <select
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-purple-400"
-                        value={convCategory}
-                        onChange={(e) => setConvCategory(e.target.value)}
-                      >
-                        <option value="Art Consult">Art Consult</option>
-                        <option value="T-Shirt">T-Shirt</option>
-                        <option value="Hoodie">Hoodie</option>
-                        <option value="Sweatshirt">Sweatshirt</option>
-                        <option value="Custom Wear">Custom Wear</option>
-                      </select>
-                    </div>
-
-                    {/* Print Type selection */}
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-wide block mb-1">Print Type</label>
-                      <input
-                        type="text"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-purple-400"
-                        placeholder="DTF / Screen Print / Sublimation"
-                        value={convPrintType}
-                        onChange={(e) => setConvPrintType(e.target.value)}
-                      />
-                    </div>
-
-                    {/* Quantity */}
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-wide block mb-1">Quantity (pcs)</label>
-                      <input
-                        type="number"
-                        min="1"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-purple-400"
-                        value={convQty}
-                        onChange={(e) => setConvQty(Number(e.target.value))}
-                      />
-                    </div>
-
-                    {/* Model Details */}
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-wide block mb-1">Garment Model Type</label>
-                      <input
-                        type="text"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-purple-400"
-                        placeholder="Regular fit / Oversized"
-                        value={convModel}
-                        onChange={(e) => setConvModel(e.target.value)}
-                      />
-                    </div>
-
-                    {/* Financial entries */}
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-wide block mb-1">Total Pricing Amount</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-purple-400"
-                        value={convTotalAmount}
-                        onChange={(e) => setConvTotalAmount(Number(e.target.value))}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-wide block mb-1">Advance Payment Received</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-1 focus:ring-purple-400"
-                        value={convAdvancePay}
-                        onChange={(e) => setConvAdvancePay(Number(e.target.value))}
-                      />
-                    </div>
-
-                    {/* Selected Designer mockups selection */}
-                    <div className="col-span-2">
-                      <span className="text-[9px] font-black text-slate-500 uppercase tracking-wide block mb-2 font-mono">Selected Design Mockup to lock</span>
-                      {selectedDesignerImages.length > 0 ? (
-                        <div className="flex gap-2">
-                          {selectedDesignerImages.map((img, i) => (
-                            <div key={i} className="relative w-24 h-24 border-2 border-purple-500 rounded-xl overflow-hidden bg-slate-50 shadow-md">
-                              <img src={img} alt="chosen" className="w-full h-full object-cover" />
-                              <div className="absolute top-1 right-1 bg-purple-600 text-white rounded-full p-0.5 shadow">
-                                <Check size={10} className="stroke-[3]" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-[9px] text-amber-600 font-extrabold uppercase bg-amber-55 px-2.5 py-2 rounded-xl border border-amber-200 block">
-                          ⚠️ No specific artwork selected yet. We will attach the conversation's original references.
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Urgent Booking Option */}
-                    <div className="col-span-2 flex items-center gap-2 py-2">
-                      <input
-                        type="checkbox"
-                        id="conv-is-urgent"
-                        className="w-4 h-4 text-purple-600 outline-none bg-slate-50 rounded"
-                        checked={convIsUrgent}
-                        onChange={(e) => setConvIsUrgent(e.target.checked)}
-                      />
-                      <label htmlFor="conv-is-urgent" className="text-[10px] font-black text-slate-700 uppercase tracking-wide cursor-pointer">
-                        🚨 Mark Order as Urgent Production Priority
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => setIsConvertingToOrder(false)}
-                      className="px-4 py-2 border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-slate-50 transition"
-                    >
-                      Back to Chat
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isProcessing}
-                      onClick={handleConfirmOrderConversion}
-                      className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:shadow-lg transition-all active:scale-95 flex items-center gap-1.5"
-                    >
-                      {isProcessing ? (
-                        <>
-                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>Generating order...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Check size={12} className="stroke-[3]" />
-                          <span>Place Production Order</span>
-                        </>
-                      )}
-                    </button>
+          ) : activeChatId ? (
+            // Chat viewport
+            <>
+              {/* Right Pane Header */}
+              <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setSelectedOrderId(null);
+                      setSelectedDMUserId(null);
+                    }}
+                    className="p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white md:hidden"
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
+                  <img
+                    src={selectedOrderId
+                      ? `https://ui-avatars.com/api/?name=${selectedFeedItem?.customerName}&background=4D109E&color=fff`
+                      : activeDMUser?.avatar || `https://ui-avatars.com/api/?name=${activeDMUser?.name}&background=1A0B91&color=fff`
+                    }
+                    className="w-10 h-10 rounded-full border border-slate-800 object-cover"
+                    alt="avatar"
+                  />
+                  <div className="text-left">
+                    <h4 className="text-xs font-black text-white truncate max-w-[200px] md:max-w-xs">
+                      {selectedOrderId ? selectedFeedItem?.customerName : activeDMUser?.name}
+                    </h4>
+                    <p className="text-[10px] text-slate-350 font-bold uppercase tracking-wide">
+                      {selectedOrderId
+                        ? `${selectedFeedItem?.category} • #${selectedOrderId.slice(-6)}`
+                        : activeDMUser?.role?.replace('_', ' ') || 'User'
+                      }
+                    </p>
                   </div>
                 </div>
-              ) : (
-                <>
-                  {/* Reference Spec Sheet Card */}
-                  <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-3 font-sans">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-[10px] font-black uppercase tracking-widest block ${selectedFeedItem?.isOrder ? 'text-indigo-750' : 'text-purple-700'
-                        }`}>
-                        {selectedFeedItem?.isOrder ? '📦 Artwork Specification Sheet' : '🎨 Design Brief & Discussion'}
+
+                <div className="flex items-center gap-2">
+                  {selectedOrderId && !selectedFeedItem?.isOrder && !isDesigner && (
+                    <button
+                      onClick={startOrderConversionFlow}
+                      className="px-3 py-1.5 bg-purple-650 hover:bg-purple-750 text-white rounded-lg text-[9px] font-black uppercase tracking-wider transition"
+                    >
+                      Convert to Order
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setSelectedOrderId(null);
+                      setSelectedDMUserId(null);
+                    }}
+                    className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white hidden md:block"
+                    title="Close session"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Chat Panel Body (Scroll Area) */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 flex flex-col min-h-0 bg-[#efeae2] relative select-text">
+                {/* Spec details card (Only for design chats) */}
+                {selectedOrderId && selectedFeedItem && !isConvertingToOrder && (
+                  <div className="bg-white/95 backdrop-blur border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-3 font-sans shrink-0 text-left">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[9px] font-black uppercase text-purple-700 tracking-wider">
+                        Spec sheet details
                       </span>
-                      {!selectedFeedItem?.isOrder && !isDesigner && (
-                        <button
-                          onClick={startOrderConversionFlow}
-                          className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-650 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95 animate-pulse shadow-sm"
-                        >
-                          Create Order
-                        </button>
-                      )}
+                      <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded">
+                        {selectedFeedItem.statusText}
+                      </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-xl">
+                    <div className="grid grid-cols-2 gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs">
                       <div>
-                        <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">Customer</p>
-                        <p className="text-xs font-black text-slate-800">{selectedFeedItem?.customerName}</p>
-                        <p className="text-[9px] text-slate-400 font-mono mt-0.5">{selectedFeedItem?.isOrder ? selectedOrderReal?.customerInfo.phone : 'Inquiry Client'}</p>
+                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Customer</span>
+                        <span className="font-bold text-slate-800">{selectedFeedItem.customerName}</span>
                       </div>
                       <div>
-                        <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">Spec Description</p>
-                        <p className="text-xs font-black text-slate-800 uppercase tracking-tighter">
-                          {selectedFeedItem?.category} / {selectedFeedItem?.isOrder ? (selectedOrderReal?.details.model || 'Standard') : 'Pattern Mockups'}
-                        </p>
-                        <p className="text-[9px] text-slate-500 font-bold">
-                          {selectedFeedItem?.isOrder ? `Qty ${selectedFeedItem?.qty} units` : 'In Consultation'}
-                        </p>
+                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Quantity</span>
+                        <span className="font-bold text-slate-800">{selectedFeedItem.isOrder ? `${selectedFeedItem.qty} units` : 'In Consultation'}</span>
                       </div>
                     </div>
 
-                    {selectedFeedItem?.message && (
-                      <div>
-                        <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">Brief / Idea description</p>
-                        <div className="text-xs text-slate-700 leading-relaxed font-semibold bg-slate-50 p-2.5 rounded-lg border border-slate-100 space-y-2">
-                          <p>{selectedFeedItem.message}</p>
-                        </div>
+                    <p className="text-[11px] text-slate-600 font-medium bg-slate-50/50 p-2.5 rounded-lg border border-slate-100">
+                      {selectedFeedItem.message}
+                    </p>
+
+                    {selectedFeedItem.voiceNote && (
+                      <div className="bg-purple-50/50 p-2 rounded-xl flex items-center gap-3 border border-purple-100">
+                        <Mic size={14} className="text-purple-600" />
+                        <audio src={selectedFeedItem.voiceNote} controls className="h-7 w-full" />
                       </div>
                     )}
 
-                    {selectedFeedItem?.voiceNote && (
-                      <div className="bg-purple-50/75 hover:bg-purple-100/90 p-2.5 rounded-xl border border-purple-100 flex items-center gap-3 transition">
-                        <div className="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 shadow-sm">
-                          <Mic size={14} className="animate-pulse" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[8px] text-purple-700 font-extrabold uppercase tracking-wide font-mono">Audio briefing / Voice brief</p>
-                          <audio src={selectedFeedItem.voiceNote} controls className="w-full h-8 mt-0.5 rounded outline-none" />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Reference layouts uploaded by creator */}
-                    {selectedFeedItem?.imageAttachments && selectedFeedItem.imageAttachments.length > 0 && (
+                    {selectedFeedItem.imageAttachments && selectedFeedItem.imageAttachments.length > 0 && (
                       <div>
-                        <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest mb-1.5">Reference Assets</p>
-                        <div className="grid grid-cols-4 gap-2">
-                          {selectedFeedItem.imageAttachments?.map((img, i) => (
+                        <span className="text-[8px] text-slate-400 font-bold uppercase block mb-1.5">References</span>
+                        <div className="flex gap-2 overflow-x-auto py-1">
+                          {selectedFeedItem.imageAttachments.map((img, i) => (
                             <button
                               key={i}
                               onClick={() => setViewImage(img)}
-                              className="relative aspect-square border border-slate-200 rounded-lg overflow-hidden bg-slate-100 group hover:scale-[1.03] transition-all cursor-zoom-in"
+                              className="relative w-16 h-16 border border-slate-200 rounded-lg overflow-hidden bg-slate-50 hover:scale-[1.02] transition shrink-0"
                             >
                               <img src={img} alt="ref" className="w-full h-full object-cover" />
                             </button>
@@ -1509,70 +1378,121 @@ export default function ConversationDashboard({
                       </div>
                     )}
                   </div>
+                )}
 
-                  {/* Chat Thread section for this artwork order */}
-                  <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm flex flex-col min-h-[300px]">
-                    <div className="pb-2 border-b border-slate-100 flex justify-between items-center mb-3">
-                      <span className="text-[10px] font-black text-slate-800 uppercase tracking-wider">
-                        Studio Dialogue Stream
-                      </span>
-                      <span className="text-[9px] bg-slate-100 text-slate-500 py-0.5 px-2 rounded font-bold">
-                        Order Discussion
-                      </span>
+                {/* Conversion workflow Form in right pane */}
+                {isConvertingToOrder && selectedFeedItem && (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-md space-y-4 text-left font-sans max-w-xl mx-auto shrink-0">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                      <h4 className="text-xs font-black uppercase text-purple-700 tracking-wider">Book Formal Production Order</h4>
+                      <button onClick={() => setIsConvertingToOrder(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                        <X size={16} />
+                      </button>
                     </div>
 
-                    {/* Messages scroll box */}
-                    <div className="flex-1 space-y-4 max-h-[220px] overflow-y-auto pr-1">
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="col-span-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Customer</label>
+                        <input type="text" className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-700 outline-none" value={selectedFeedItem.customerName} disabled />
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Phone</label>
+                        <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" placeholder="+91 XXXXX XXXXX" value={convPhone} onChange={(e) => setConvPhone(e.target.value)} />
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Address</label>
+                        <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" placeholder="City Address" value={convAddress} onChange={(e) => setConvAddress(e.target.value)} />
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Category</label>
+                        <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750 outline-none" value={convCategory} onChange={(e) => setConvCategory(e.target.value)}>
+                          <option value="Art Consult">Art Consult</option>
+                          <option value="T-Shirt">T-Shirt</option>
+                          <option value="Hoodie">Hoodie</option>
+                          <option value="Sweatshirt">Sweatshirt</option>
+                          <option value="Custom Wear">Custom Wear</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Print Type</label>
+                        <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" value={convPrintType} onChange={(e) => setConvPrintType(e.target.value)} />
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Quantity (pcs)</label>
+                        <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" value={convQty} onChange={(e) => setConvQty(Number(e.target.value))} />
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Price Amount</label>
+                        <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" value={convTotalAmount} onChange={(e) => setConvTotalAmount(Number(e.target.value))} />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                      <button type="button" onClick={() => setIsConvertingToOrder(false)} className="px-4 py-2 border border-slate-250 text-slate-500 rounded-lg text-[10px] font-black uppercase">Cancel</button>
+                      <button type="button" disabled={isProcessing} onClick={handleConfirmOrderConversion} className="px-5 py-2.5 bg-purple-600 text-white rounded-lg text-[10px] font-black uppercase">Place Production Order</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Message Bubble Stream */}
+                <div className="flex-1 flex flex-col gap-3 overflow-y-auto">
+                  {/* DESIGN CHAT DIALOGUE */}
+                  {selectedOrderId && (
+                    <>
                       {(!activeChatConv || !activeChatConv.replies || activeChatConv.replies.length === 0) ? (
-                        <div className="text-center py-8 text-slate-400 italic text-[11px]">
-                          No chat replies or files uploaded in this session yet. Upload drawing cards using the (+) button below.
+                        <div className="text-center py-10 text-slate-400 italic text-xs">
+                          No conversation comments in this thread yet. Send a note or attach drawings below.
                         </div>
                       ) : (
-                        activeChatConv.replies.map((rep) => (
-                          <div
-                            key={rep.id}
-                            className={`p-3 rounded-2xl text-xs text-left ${rep.senderRole === 'designer'
-                                ? 'bg-purple-50/70 border border-purple-100 ml-5'
-                                : 'bg-slate-50 border border-slate-150'
-                              }`}
-                          >
-                            <div className="flex justify-between items-center mb-1">
-                              <span className={`font-black uppercase text-[9px] ${rep.senderRole === 'designer' ? 'text-purple-700' : 'text-slate-700'
-                                }`}>
-                                {rep.senderName}
-                              </span>
-                              <span className="text-[8px] text-slate-400 font-semibold">
-                                {new Date(rep.createdAt).toLocaleTimeString()}
-                              </span>
-                            </div>
-                            <p className="text-slate-600 font-medium whitespace-pre-wrap">{rep.message}</p>
+                        activeChatConv.replies.map((rep) => {
+                          const isMe = rep.senderName.startsWith(currentUser?.name || '---');
+                          return (
+                            <div
+                              key={rep.id}
+                              className={cn(
+                                "p-3 rounded-2xl shadow-sm text-xs max-w-[85%] flex flex-col text-left font-sans relative",
+                                isMe
+                                  ? "bg-[#d9fdd3] text-slate-800 self-end rounded-tl-xl rounded-tr-sm rounded-b-xl"
+                                  : "bg-white text-slate-800 self-start rounded-tr-xl rounded-tl-sm rounded-b-xl"
+                              )}
+                            >
+                              <div className="flex justify-between items-baseline gap-4 mb-1 border-b border-slate-100 pb-0.5">
+                                <span className={cn("font-black text-[9px] uppercase", isMe ? "text-green-750" : "text-purple-700")}>
+                                  {rep.senderName}
+                                </span>
+                                <span className="text-[8px] text-slate-400 font-semibold">
+                                  {new Date(rep.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed">{rep.message}</p>
 
-                            {/* Attachments inside the replies with direct Download & Create actions */}
-                            {((rep.imageAttachments && rep.imageAttachments.length > 0) ||
-                              (rep.pdfAttachments && rep.pdfAttachments.length > 0)) && (
-                                <div className="grid grid-cols-4 gap-2 mt-2 pt-2 border-t border-slate-200/40 font-sans">
+                              {/* Attachments */}
+                              {((rep.imageAttachments && rep.imageAttachments.length > 0) || (rep.pdfAttachments && rep.pdfAttachments.length > 0)) && (
+                                <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
                                   {rep.imageAttachments?.map((img, i) => (
-                                    <div key={i} className="relative aspect-square border border-slate-200 rounded-lg overflow-hidden bg-slate-50 group hover:border-purple-300 transition-all duration-150">
-                                      <img src={img} alt="attached artwork" className="w-full h-full object-cover" />
-
-                                      <button
-                                        type="button"
+                                    <div key={i} className="relative aspect-square border border-slate-100 rounded-lg overflow-hidden bg-slate-50 group cursor-pointer">
+                                      <img src={img} alt="mockup" className="w-full h-full object-cover" />
+                                      <div
                                         onClick={() => setViewImage(img)}
-                                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[8px] font-black uppercase tracking-wider cursor-zoom-in"
+                                        className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[8px] font-black uppercase"
                                       >
                                         View HD
-                                      </button>
-
+                                      </div>
                                       <button
                                         type="button"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleDownloadImage(img, `designer_mockup_${rep.id}_${i}.png`);
+                                          handleDownloadImage(img, `design_file_${rep.id}_${i}.png`);
                                         }}
-                                        className="absolute bottom-1 right-1 bg-black/75 hover:bg-black p-1 rounded hover:scale-105 transition-all text-white shadow-md z-10 flex items-center justify-center"
-                                        title="Download Design Mockup"
+                                        className="absolute bottom-1 right-1 bg-black/75 p-1 rounded text-white shadow-md z-10"
                                       >
-                                        <Download size={10} className="stroke-[3]" />
+                                        <Download size={10} />
                                       </button>
                                     </div>
                                   ))}
@@ -1582,160 +1502,264 @@ export default function ConversationDashboard({
                                       href={pdf}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="aspect-square border border-slate-200 rounded-lg bg-white flex flex-col items-center justify-center p-1 text-center"
+                                      className="aspect-square border border-slate-200 rounded-lg bg-white flex flex-col items-center justify-center p-2 text-center"
                                     >
-                                      <FileText size={14} className="text-slate-400" />
-                                      <span className="text-[7px] font-bold text-slate-500 truncate w-full mt-1">PDF</span>
+                                      <FileText size={16} className="text-slate-400" />
+                                      <span className="text-[8px] font-bold text-slate-500 truncate w-full mt-1">PDF File</span>
                                     </a>
                                   ))}
                                 </div>
                               )}
-
-                            {/* Inline Order Builder inside Chat Item when designer shares drawings */}
-                            {rep.senderRole === 'designer' && rep.imageAttachments && rep.imageAttachments.length > 0 && !selectedFeedItem?.isOrder && !isDesigner && (
-                              <div className="mt-3 p-2 bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-200/50 rounded-xl flex items-center justify-between gap-3 text-left font-sans">
-                                <div className="min-w-0">
-                                  <p className="text-[9px] font-extrabold text-purple-800 uppercase tracking-wider">Like this design?</p>
-                                  <p className="text-[8px] text-slate-500 leading-normal">Instantly book the formal order using this design draft.</p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedDesignerImages(rep.imageAttachments || []);
-                                    startOrderConversionFlow();
-                                  }}
-                                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-sm shrink-0 font-sans"
-                                >
-                                  Create Order
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    {/* Textbox typing area */}
-                    <div className="space-y-2 pt-3 border-t border-slate-150 mt-3">
-                      {replyAttachments[selectedOrderId] && replyAttachments[selectedOrderId].length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
-                          {replyAttachments[selectedOrderId].map((att, i) => (
-                            <div key={i} className="relative w-10 h-10 border border-slate-200 bg-white rounded-lg overflow-hidden flex items-center justify-center">
-                              {att.type.startsWith('image/') ? (
-                                <img src={att.data} alt="thumb" className="w-full h-full object-cover" />
-                              ) : (
-                                <FileText size={16} className="text-slate-400" />
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setReplyAttachments(prev => ({
-                                    ...prev,
-                                    [selectedOrderId]: prev[selectedOrderId].filter((_, idx) => idx !== i)
-                                  }));
-                                }}
-                                className="absolute -top-1 -right-1 bg-red-500 text-white p-0.5 rounded-full shadow"
-                              >
-                                <X size={8} />
-                              </button>
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })
                       )}
+                    </>
+                  )}
 
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="file"
-                          id={`reply-file-select-${selectedOrderId}`}
-                          className="hidden"
-                          accept="image/*,.pdf"
-                          multiple
-                          onChange={(e) => handleReplyFileChange(selectedOrderId, e)}
-                        />
+                  {/* DIRECT MESSAGES DIALOGUE */}
+                  {selectedDMUserId && (
+                    <>
+                      {activeDMMessages.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 italic text-xs">
+                          No messages in this chat yet. Start a direct discussion with {activeDMUser?.name}!
+                        </div>
+                      ) : (
+                        activeDMMessages.map((msg) => {
+                          const isMe = msg.senderName === currentUser?.name;
+                          return (
+                            <div
+                              key={msg.id}
+                              className={cn(
+                                "p-3 rounded-2xl shadow-sm text-xs max-w-[85%] flex flex-col text-left font-sans",
+                                isMe
+                                  ? "bg-[#d9fdd3] text-slate-800 self-end rounded-tl-xl rounded-tr-sm rounded-b-xl"
+                                  : "bg-white text-slate-800 self-start rounded-tr-xl rounded-tl-sm rounded-b-xl"
+                              )}
+                            >
+                              <div className="flex justify-between items-baseline gap-4 mb-1 border-b border-slate-105 pb-0.5">
+                                <span className={cn("font-black text-[9px] uppercase", isMe ? "text-green-750" : "text-blue-700")}>
+                                  {msg.senderName}
+                                </span>
+                                <span className="text-[8px] text-slate-400 font-semibold">
+                                  {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed">{msg.message}</p>
 
+                              {/* DM Attachments */}
+                              {((msg.imageAttachments && msg.imageAttachments.length > 0) || (msg.pdfAttachments && msg.pdfAttachments.length > 0)) && (
+                                <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
+                                  {msg.imageAttachments?.map((img, i) => (
+                                    <div key={i} className="relative aspect-square border border-slate-100 rounded-lg overflow-hidden bg-slate-50 group cursor-pointer">
+                                      <img src={img} alt="attachment" className="w-full h-full object-cover" />
+                                      <div
+                                        onClick={() => setViewImage(img)}
+                                        className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[8px] font-black uppercase"
+                                      >
+                                        View HD
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDownloadImage(img, `dm_file_${msg.id}_${i}.png`);
+                                        }}
+                                        className="absolute bottom-1 right-1 bg-black/75 p-1 rounded text-white shadow-md z-10"
+                                      >
+                                        <Download size={10} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {msg.pdfAttachments?.map((pdf, i) => (
+                                    <a
+                                      key={i}
+                                      href={pdf}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="aspect-square border border-slate-200 rounded-lg bg-white flex flex-col items-center justify-center p-2 text-center"
+                                    >
+                                      <FileText size={16} className="text-slate-400" />
+                                      <span className="text-[8px] font-bold text-slate-500 truncate w-full mt-1">PDF File</span>
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Compose Bar Footer & Spec Actions */}
+              <div className="bg-slate-50 p-3 border-t border-slate-200 shrink-0">
+                {/* Attachments Preview */}
+                {activeChatId && replyAttachments[activeChatId] && replyAttachments[activeChatId].length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 p-1.5 bg-white border border-slate-200 rounded-xl mb-2 text-left">
+                    {replyAttachments[activeChatId].map((att, i) => (
+                      <div key={i} className="relative w-11 h-11 border border-slate-150 rounded-lg overflow-hidden flex items-center justify-center bg-slate-50">
+                        {att.type.startsWith('image/') ? (
+                          <img src={att.data} alt="thumb" className="w-full h-full object-cover" />
+                        ) : (
+                          <FileText size={18} className="text-slate-400" />
+                        )}
                         <button
                           type="button"
-                          onClick={() => document.getElementById(`reply-file-select-${selectedOrderId}`)?.click()}
-                          className="p-2.5 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-xl transition border border-purple-100 flex items-center justify-center shrink-0"
-                          title="Attach artwork drawings / cards (+ button)"
-                        >
-                          <Plus size={16} className="stroke-[3]" />
-                        </button>
-
-                        <input
-                          type="text"
-                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-medium placeholder:text-slate-400"
-                          placeholder="Comment or upload drawings..."
-                          value={replyInput[selectedOrderId] || ''}
-                          onChange={(e) => setReplyInput(prev => ({ ...prev, [selectedOrderId]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSendReply(selectedOrderId);
+                          onClick={() => {
+                            setReplyAttachments(prev => ({
+                              ...prev,
+                              [activeChatId]: prev[activeChatId].filter((_, idx) => idx !== i)
+                            }));
                           }}
-                        />
-
-                        {isReplyCompressing[selectedOrderId] ? (
-                          <div className="w-8 h-8 flex items-center justify-center">
-                            <span className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleSendReply(selectedOrderId)}
-                            className="p-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl flex items-center justify-center transition"
-                          >
-                            <Send size={12} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Interaction workflows footer inside the workspace */}
-                  <div className="pt-3 border-t border-slate-100 font-sans">
-                    {!isDesigner ? (
-                      !selectedFeedItem?.isOrder ? (
-                        <button
-                          onClick={startOrderConversionFlow}
-                          className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+                          className="absolute -top-1 -right-1 bg-red-500 text-white p-0.5 rounded-full shadow"
                         >
-                          <Plus size={14} className="stroke-[3]" />
-                          <span>Convert to Production Order</span>
+                          <X size={8} />
                         </button>
-                      ) : (
-                        <div className="text-center py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs text-purple-700 font-extrabold uppercase tracking-wide flex items-center justify-center gap-2">
-                          <Sparkles size={14} className="animate-pulse" />
-                          <span>Active Art Studio Session</span>
-                        </div>
-                      )
-                    ) : !selectedFeedItem?.assignedDesigner || selectedFeedItem.assignedDesigner === 'Unassigned' || selectedFeedItem.assignedDesigner === 'Designer assigned' ? (
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Input row */}
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="file"
+                    id={`chat-reply-file-select-${activeChatId}`}
+                    className="hidden"
+                    accept="image/*,.pdf"
+                    multiple
+                    onChange={(e) => handleReplyFileChange(activeChatId, e)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById(`chat-reply-file-select-${activeChatId}`)?.click()}
+                    className="p-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-xl transition shadow-sm"
+                    title="Attach files"
+                  >
+                    <Plus size={16} className="stroke-[3]" />
+                  </button>
+
+                  <input
+                    type="text"
+                    className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-semibold placeholder:text-slate-400 text-slate-800 shadow-sm"
+                    placeholder="Type a message..."
+                    value={replyInput[activeChatId] || ''}
+                    onChange={(e) => setReplyInput(prev => ({ ...prev, [activeChatId]: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSendActiveChat();
+                    }}
+                  />
+
+                  {/* Mic for Voice Note Simulation */}
+                  {voiceNoteBase64 ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded uppercase font-black tracking-widest animate-pulse">Voice brief loaded</span>
                       <button
-                        disabled={isProcessing}
-                        onClick={() => handleTakeArt(selectedOrderId)}
-                        className="w-full py-3 bg-purple-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-purple-700 transition shadow"
+                        type="button"
+                        onClick={() => setVoiceNoteBase64(null)}
+                        className="text-[9px] text-red-500 font-extrabold uppercase mr-1"
                       >
-                        Claim Workspace & Chat Space
+                        Cancel
                       </button>
-                    ) : (
-                      (isDesigner && selectedFeedItem.assignedDesigner && (
-                        selectedFeedItem.assignedDesigner.toLowerCase().includes((currentUser?.name || '').toLowerCase()) ||
-                        (currentUser?.name || '').toLowerCase().includes(selectedFeedItem.assignedDesigner.toLowerCase())
-                      )) ? (
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const testBlob = generateSimulatedVoiceBlob();
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setVoiceNoteBase64(reader.result as string);
+                          alert("Notice: Simulated a 2.5s voice note message for instant preview.");
+                        };
+                        reader.readAsDataURL(testBlob);
+                      }}
+                      className="p-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-500 rounded-xl transition"
+                      title="Record speech brief"
+                    >
+                      <Mic size={16} />
+                    </button>
+                  )}
+
+                  {isReplyCompressing[activeChatId] ? (
+                    <div className="w-8 h-8 flex items-center justify-center">
+                      <span className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleSendActiveChat}
+                      className="p-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl flex items-center justify-center transition shadow-md active:scale-95"
+                    >
+                      <Send size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Workflow footer buttons (Only for design chats) */}
+                {selectedOrderId && selectedFeedItem && !isConvertingToOrder && (
+                  <div className="mt-3 pt-2.5 border-t border-slate-200/50 flex gap-2 justify-end">
+                    {isDesigner ? (
+                      !selectedFeedItem.assignedDesigner || selectedFeedItem.assignedDesigner === 'Unassigned' || selectedFeedItem.assignedDesigner === 'Designer assigned' ? (
                         <button
                           disabled={isProcessing}
-                          onClick={() => handleFinishAndSendToStaff(selectedOrderId)}
-                          className="w-full py-3 bg-slate-950 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-purple-800 transition shadow flex items-center justify-center gap-1.5"
+                          onClick={() => handleTakeArt(selectedOrderId)}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-xl text-[10px] font-black uppercase shadow tracking-wider"
                         >
-                          <Check size={14} className="stroke-[3]" />
-                          Finish & Send to Staff
+                          Claim Design Workspace
                         </button>
                       ) : (
-                        <div className="text-center py-2 text-xs text-amber-600 italic font-bold uppercase tracking-wider">
-                          Locked to workspace of {selectedFeedItem.assignedDesigner}
-                        </div>
+                        (selectedFeedItem.assignedDesigner.toLowerCase().includes((currentUser?.name || '').toLowerCase()) ||
+                         (currentUser?.name || '').toLowerCase().includes(selectedFeedItem.assignedDesigner.toLowerCase())) && (
+                          <button
+                            disabled={isProcessing}
+                            onClick={() => handleFinishAndSendToStaff(selectedOrderId)}
+                            className="px-4 py-2 bg-slate-950 hover:bg-purple-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow"
+                          >
+                            <Check size={12} className="stroke-[3]" />
+                            <span>Finish & Send to Staff</span>
+                          </button>
+                        )
+                      )
+                    ) : (
+                      !selectedFeedItem.isOrder && (
+                        <button
+                          onClick={startOrderConversionFlow}
+                          className="w-full py-2 bg-purple-600 hover:bg-purple-750 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow"
+                        >
+                          <Plus size={12} className="stroke-[3]" />
+                          <span>Convert to Production Order</span>
+                        </button>
                       )
                     )}
                   </div>
-                </>
-              )}
+                )}
+              </div>
+            </>
+          ) : (
+            // Blank splash screen
+            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#f8f9fa] text-center font-sans">
+              <div className="max-w-md space-y-4">
+                <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto text-purple-650 shadow-inner">
+                  <MessageSquare size={32} />
+                </div>
+                <h3 className="text-lg font-black text-slate-800 uppercase tracking-widest">
+                  Pallywear Inbox
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto font-medium">
+                  Send and receive direct messages with designers, staff, and team members. Direct channels will show up in the side feed.
+                </p>
+                <div className="flex justify-center gap-2 pt-2">
+                  <span className="px-3 py-1 bg-purple-50 border border-purple-100 rounded-full text-[10px] font-black text-purple-700 uppercase tracking-wider">
+                    WhatsApp Chat Mode
+                  </span>
+                  <span className="px-3 py-1 bg-green-50 border border-green-100 rounded-full text-[10px] font-black text-green-700 uppercase tracking-wider">
+                    Secure local Sync
+                  </span>
+                </div>
+              </div>
             </div>
           )}
         </div>

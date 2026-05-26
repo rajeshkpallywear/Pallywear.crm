@@ -87,146 +87,88 @@ export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrd
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Production Team</h2>
-          <p className="text-gray-500 mt-1">Download production files and move to delivery</p>
-        </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-end">
         <button
           onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-sm font-bold transition-colors flex items-center gap-2"
+          className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-colors flex items-center gap-2 shadow-sm"
         >
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
           Sync Data
         </button>
       </div>
 
-      {/* Summary Stats Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <button
-          onClick={() => setSelectedSection('total')}
-          className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
-            selectedSection === 'total' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
-          )}
-        >
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            selectedSection === 'total' ? "bg-white/20 text-white" : "bg-blue-50 text-blue-600 group-hover:bg-blue-100"
-          )}>
-            <Package size={24} />
-          </div>
-          <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'total' ? "text-white/70" : "text-gray-500")}>
-              Total Orders
-            </p>
-            <p className="text-2xl font-black">{totalOrdersCount}</p>
-            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'total' ? "text-white/60" : "text-gray-400")}>
-              All production entries
-            </span>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setSelectedSection('hold')}
-          className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
-            selectedSection === 'hold' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
-          )}
-        >
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            selectedSection === 'hold' ? "bg-white/20 text-white" : "bg-red-50 text-red-600 group-hover:bg-red-100"
-          )}>
-            <Factory size={24} />
-          </div>
-          <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'hold' ? "text-white/70" : "text-gray-500")}>
-              Hold Orders
-            </p>
-            <p className="text-2xl font-black">{holdOrdersCount}</p>
-            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'hold' ? "text-white/60" : "text-gray-400")}>
-              On-hold runs
-            </span>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setSelectedSection('completed')}
-          className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
-            selectedSection === 'completed' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
-          )}
-        >
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            selectedSection === 'completed' ? "bg-white/20 text-white" : "bg-green-50 text-green-600 group-hover:bg-green-100"
-          )}>
-            <TrendingUp size={24} />
-          </div>
-          <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'completed' ? "text-white/70" : "text-gray-500")}>
-              Completed Orders
-            </p>
-            <p className="text-2xl font-black">{completedOrdersCount}</p>
-            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'completed' ? "text-white/60" : "text-gray-400")}>
-              Dispatched and closed
-            </span>
-          </div>
-        </button>
+      {/* Premium Stat Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { key: 'total', label: 'Total Orders', sub: 'All production entries', count: totalOrdersCount, icon: Package, gradient: 'from-violet-500 to-purple-600', light: 'bg-violet-50 text-violet-600' },
+          { key: 'hold', label: 'Hold Orders', sub: 'On-hold runs', count: holdOrdersCount, icon: Factory, gradient: 'from-amber-500 to-orange-500', light: 'bg-amber-50 text-amber-600' },
+          { key: 'completed', label: 'Completed', sub: 'Dispatched and closed', count: completedOrdersCount, icon: TrendingUp, gradient: 'from-emerald-500 to-teal-500', light: 'bg-emerald-50 text-emerald-600' },
+        ].map(card => {
+          const Icon = card.icon;
+          const isActive = selectedSection === card.key;
+          return (
+            <button key={card.key} onClick={() => setSelectedSection(card.key as any)}
+              className={cn("relative p-5 rounded-2xl border text-left flex items-start gap-4 cursor-pointer overflow-hidden transition-all",
+                isActive ? `bg-gradient-to-br ${card.gradient} border-transparent shadow-lg scale-[1.02]` : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-md"
+              )}>
+              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", isActive ? "bg-white/20" : card.light.split(' ')[0])}>
+                <Icon size={20} className={isActive ? "text-white" : card.light.split(' ').slice(1).join(' ')} />
+              </div>
+              <div>
+                <p className={cn("text-[10px] font-black uppercase tracking-widest", isActive ? "text-white/70" : "text-slate-400")}>{card.label}</p>
+                <p className={cn("text-3xl font-black tracking-tight mt-0.5", isActive ? "text-white" : "text-slate-900")}>{card.count}</p>
+                <span className={cn("text-[10px] font-medium mt-0.5 block", isActive ? "text-white/60" : "text-slate-400")}>{card.sub}</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 space-y-4">
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
-            <Factory className="text-purple-600" size={16} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 space-y-3">
+          <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 px-1">
+            <Factory className="text-purple-500" size={14} />
             {selectedSection === 'total' ? 'All Production Lines' : selectedSection === 'hold' ? 'On Hold Lines' : 'Completed Runs'} ({filteredOrders.length})
           </h3>
-          <div className="space-y-3">
+          <div className="space-y-2.5 max-h-[65vh] overflow-y-auto pr-1">
             {filteredOrders.length > 0 ? (
               filteredOrders.map(order => (
                 <button
                   key={order.id}
                   onClick={() => setSelectedOrder(order)}
-                  className={`w-full text-left p-5 rounded-3xl border transition-all ${selectedOrder?.id === order.id
-                    ? 'bg-black text-white border-black shadow-lg scale-[1.02]'
-                    : 'bg-white border-gray-100 hover:border-gray-300 shadow-sm'
-                    }`}
+                  className={cn("w-full text-left p-4 rounded-2xl border transition-all",
+                    selectedOrder?.id === order.id
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-lg scale-[1.01]'
+                      : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                  )}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-mono opacity-60">#{order.id.slice(-6)}</span>
-                        {order.status === OrderStatus.HOLD && (
-                          <span className="bg-orange-500 text-white text-[9px] font-black px-1.5 rounded w-fit mt-1">ON HOLD</span>
-                        )}
-                        {order.isUrgent && (
-                          <span className="bg-red-500 text-white text-[10px] font-black px-1.5 rounded animate-pulse w-fit mt-0.5">URGENT</span>
-                        )}
-                      </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-mono opacity-60">#{order.id.slice(-6)}</span>
+                      {order.status === OrderStatus.HOLD && (
+                        <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 rounded w-fit">ON HOLD</span>
+                      )}
+                      {order.isUrgent && (
+                        <span className="bg-red-500 text-white text-[9px] font-black px-1.5 rounded animate-pulse w-fit">URGENT</span>
+                      )}
                     </div>
-                    <span className="px-2 py-0.5 bg-purple-500/20 text-purple-200 text-[8px] uppercase font-bold rounded">
+                    <span className={cn("text-[8px] font-black uppercase px-2 py-0.5 rounded-full border",
+                      selectedOrder?.id === order.id ? "bg-white/10 border-white/20 text-white/80" : "bg-violet-50 text-violet-600 border-violet-200"
+                    )}>
                       {getDisplayCategory(order)}
                     </span>
                   </div>
-                  <div className="font-bold text-lg mb-1">{order.customerInfo.name}</div>
+                  <div className="font-bold text-sm mb-1">{order.customerInfo.name}</div>
                   {order.status === OrderStatus.HOLD && order.holdReason && (
-                    <div className="text-[10px] text-red-500 font-bold mt-1 bg-red-50 px-1.5 py-0.5 rounded italic border border-red-100 mb-2">
-                      Reason: {order.holdReason}
-                    </div>
+                    <div className="text-[10px] text-red-400 font-bold mt-1 italic">Reason: {order.holdReason}</div>
                   )}
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className={`text-[10px] font-bold ${selectedOrder?.id === order.id ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Assets Ready
-                    </span>
-                  </div>
                 </button>
               ))
             ) : (
-              <div className="p-12 bg-gray-50 border border-dashed border-gray-200 rounded-3xl text-center">
-                <CheckCircle className="mx-auto text-gray-300 mb-2" size={32} />
-                <p className="text-sm text-gray-500">All current orders are finished!</p>
+              <div className="p-10 bg-white border border-dashed border-slate-200 rounded-2xl text-center">
+                <CheckCircle className="mx-auto text-slate-300 mb-2" size={28} />
+                <p className="text-xs text-slate-400 font-medium">All current orders are finished!</p>
               </div>
             )}
           </div>
@@ -237,140 +179,76 @@ export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrd
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden"
+              className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
             >
-              <div className="p-8 bg-black text-white">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Production Order</span>
-                    <h4 className="text-3xl font-black italic tracking-tighter">#{selectedOrder.id.slice(-8)}</h4>
-                  </div>
-                  <button
-                    onClick={() => downloadAllAttachments(selectedOrder)}
-                    className="bg-white text-black px-6 py-3 rounded-full font-bold text-sm flex items-center gap-2 hover:bg-gray-200 transition-colors"
-                  >
-                    <Download size={18} />
-                    Download All Assets
-                  </button>
+              <div className="p-6 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Production Order</span>
+                  <h4 className="text-2xl font-black italic tracking-tighter mt-0.5">#{selectedOrder.id.slice(-8)}</h4>
                 </div>
+                <button
+                  onClick={() => downloadAllAttachments(selectedOrder)}
+                  className="bg-white text-slate-900 px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-slate-100 transition-colors shadow-sm"
+                >
+                  <Download size={14} />
+                  Download All Assets
+                </button>
               </div>
 
-              <div className="p-8">
-                <div className="mb-8 p-6 bg-gray-50 border border-gray-100 rounded-3xl">
-                  <div className="flex items-center justify-between mb-4">
-                    <h6 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Order Details & Breakdown</h6>
-                    <div className="flex items-center gap-4">
-                      <span className="px-3 py-1 bg-black text-white rounded-lg text-[10px] font-bold uppercase">{getDisplayCategory(selectedOrder)}</span>
-                      <span className="text-xs font-bold text-gray-900 italic">Total: {selectedOrder.quantity} pcs</span>
+              <div className="p-6">
+                <div className="mb-5 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <h6 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Order Details & Breakdown</h6>
+                    <div className="flex items-center gap-3">
+                      <span className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-bold uppercase">{getDisplayCategory(selectedOrder)}</span>
+                      <span className="text-xs font-bold text-slate-700">Total: {selectedOrder.quantity} pcs</span>
                     </div>
                   </div>
-
-                  <div className="space-y-4">
+                  <div className="space-y-3 max-h-[200px] overflow-y-auto pr-1">
                     {selectedOrder.sizeBreakdown?.map((item, idx) => (
-                      <div key={idx} className="p-4 bg-white border border-gray-100 shadow-sm rounded-2xl flex flex-col gap-2 group hover:border-brand-primary/20 transition-all">
+                      <div key={idx} className="p-3 bg-white border border-slate-100 shadow-sm rounded-xl flex flex-col gap-2">
                         <div className="flex justify-between items-start">
-                          <span className="text-[10px] font-black text-brand-primary uppercase tracking-tighter">{item.category}</span>
-                          <span className="text-[10px] font-black text-gray-900 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">{item.size}</span>
+                          <span className="text-[10px] font-black text-violet-600 uppercase tracking-tighter">{item.category}</span>
+                          <span className="text-[10px] font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded">{item.size}</span>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                          {item.colour && <div><span className="text-[8px] text-gray-400 block mb-0.5">Colour</span>{item.colour}</div>}
-                          {item.printType && <div><span className="text-[8px] text-gray-400 block mb-0.5">Print</span>{item.printType}</div>}
-                          {item.material && <div><span className="text-[8px] text-gray-400 block mb-0.5">Material</span>{item.material}</div>}
-                          {item.model && <div><span className="text-[8px] text-gray-400 block mb-0.5">Model</span>{item.model}</div>}
-                          {item.sleeve && <div><span className="text-[8px] text-gray-400 block mb-0.5">Sleeve</span>{item.sleeve}</div>}
+                        <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500 font-bold">
+                          {item.colour && <div><span className="text-[8px] text-slate-400 block">Colour</span>{item.colour}</div>}
+                          {item.printType && <div><span className="text-[8px] text-slate-400 block">Print</span>{item.printType}</div>}
+                          {item.material && <div><span className="text-[8px] text-slate-400 block">Material</span>{item.material}</div>}
                         </div>
-                        <div className="mt-2 pt-2 border-t border-gray-50 flex justify-between items-center text-gray-900 font-black text-xs italic">
-                          <span>Qty: {item.quantity} units</span>
+                        <div className="pt-1.5 border-t border-slate-50 flex justify-between items-center">
+                          <span className="text-[10px] font-black text-slate-800">Qty: {item.quantity} units</span>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-                  <div className="space-y-3">
-                    <h6 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Staff Pics</h6>
-                    {(selectedOrder.staffImages || []).map((f, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setViewingImage(f)}
-                        className="text-xs p-2 bg-gray-50 rounded border border-gray-200 truncate cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between group"
-                      >
-                        <span>Img_{i + 1}</span>
-                        <ZoomIn size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+                  {[
+                    { label: 'Staff Pics', files: selectedOrder.staffImages || [], color: 'slate', icon: 'img' },
+                    { label: 'Staff PDFs', files: selectedOrder.staffPdfs || [], color: 'slate', icon: 'doc' },
+                    { label: 'Billing Docs', files: selectedOrder.accountsAttachments || [], color: 'slate', icon: 'bill' },
+                    { label: 'Design Files', files: [...(selectedOrder.designAttachments || []), ...(selectedOrder.machineFiles || [])], color: 'violet', icon: 'art' },
+                  ].map(section => (
+                    <div key={section.label} className="space-y-2">
+                      <h6 className={cn("text-[9px] font-black uppercase tracking-widest", section.color === 'violet' ? "text-violet-500" : "text-slate-400")}>{section.label}</h6>
+                      <div className="space-y-1">
+                        {section.files.map((f, i) => (
+                          <div key={i} onClick={() => setViewingImage(f)}
+                            className={cn("text-[10px] p-2 rounded-lg border truncate cursor-pointer flex items-center gap-1.5 transition-colors",
+                              section.color === 'violet' ? "bg-violet-50 border-violet-100 text-violet-700 hover:bg-violet-100" : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100"
+                            )}>
+                            <ZoomIn size={10} />
+                            <span className="truncate">File_{i + 1}</span>
+                          </div>
+                        ))}
+                        {section.files.length === 0 && (
+                          <div className="text-[9px] text-slate-300 italic p-2">None</div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                  <div className="space-y-3">
-                    <h6 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Staff PDFs</h6>
-                    {(selectedOrder.staffPdfs || []).map((f, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setViewingImage(f)}
-                        className="text-xs p-2 bg-gray-50 rounded border border-gray-100 truncate cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between group"
-                      >
-                        <span>Doc_{i + 1}</span>
-                        <FileText size={12} className="text-gray-400" />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="space-y-3">
-                    <h6 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Billing Docs</h6>
-                    {(selectedOrder.accountsAttachments || []).map((f, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setViewingImage(f)}
-                        className="text-xs p-2 bg-gray-50 rounded border border-gray-100 truncate cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between group"
-                      >
-                        <span>Bill_{i + 1}</span>
-                        <ZoomIn size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="space-y-3">
-                    <h6 className="text-[10px] font-black text-purple-400 uppercase tracking-[0.2em]">Art Studio Files</h6>
-                    {(selectedOrder.designAttachments || []).map((f, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setViewingImage(f)}
-                        className="text-xs p-2 bg-purple-50 rounded border border-purple-100 truncate cursor-pointer hover:bg-purple-100 transition-colors flex items-center justify-between group text-purple-700"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {f.startsWith('data:image/') ? <img src={f} className="w-4 h-4 object-cover rounded" /> : <FileText size={14} />}
-                          <span className="truncate">Art_{i + 1}</span>
-                        </div>
-                        <ZoomIn size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    ))}
-                    {(selectedOrder.machineFiles || []).map((f, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setViewingImage(f)}
-                        className="text-xs p-2 bg-indigo-50 rounded border border-indigo-100 truncate cursor-pointer hover:bg-indigo-100 transition-colors flex items-center justify-between group text-indigo-700 font-bold"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          <Download size={14} />
-                          <span className="truncate">Machine_{i + 1}.zip</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="space-y-3">
-                    <h6 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Final Specs</h6>
-                    {(selectedOrder.orderManagementAttachments || []).map((f, i) => (
-                      <div
-                        key={i}
-                        onClick={() => setViewingImage(f)}
-                        className="text-xs p-2 bg-gray-50 rounded border border-gray-100 truncate cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between group"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {f.includes('zip') ? <Download size={14} className="text-blue-500" /> : <FileText size={14} className="text-gray-400" />}
-                          <span className="truncate">Spec_{i + 1}{f.includes('zip') ? '.zip' : ''}</span>
-                        </div>
-                        <ZoomIn size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
 
                 {viewingImage && (
@@ -386,23 +264,15 @@ export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrd
                         if (window.confirm(`Release order back to ${newStatus}?`)) {
                           setIsProcessing(true);
                           try {
-                            await onUpdateOrder(selectedOrder.id, {
-                              status: newStatus,
-                              previousStatus: undefined,
-                              updatedAt: Date.now()
-                            });
+                            await onUpdateOrder(selectedOrder.id, { status: newStatus, previousStatus: undefined, updatedAt: Date.now() });
                             setSelectedOrder(prev => prev ? { ...prev, status: newStatus, previousStatus: undefined } : null);
                             alert("Order released.");
-                          } catch (e) {
-                            alert("Action failed.");
-                          } finally {
-                            setIsProcessing(false);
-                          }
+                          } catch (e) { alert("Action failed."); } finally { setIsProcessing(false); }
                         }
                       }}
-                      className="px-6 py-4 bg-green-100 text-green-700 rounded-2xl font-bold hover:bg-green-200 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+                      className="px-5 py-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold hover:bg-emerald-100 transition-all disabled:opacity-50 text-xs"
                     >
-                      Release
+                      Release Hold
                     </button>
                   ) : (
                     <button
@@ -410,32 +280,17 @@ export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrd
                       onClick={async () => {
                         const reason = window.prompt("Enter Hold Reason:");
                         if (reason === null) return;
-                        if (!reason.trim()) {
-                          alert("Reason is required.");
-                          return;
-                        }
-
+                        if (!reason.trim()) { alert("Reason is required."); return; }
                         setIsProcessing(true);
                         try {
                           const newNote = `[HOLD] ${new Date().toLocaleString()}: ${reason.trim()}`;
                           const updatedNotes = selectedOrder.notes ? `${selectedOrder.notes}\n${newNote}` : newNote;
-
-                          await onUpdateOrder(selectedOrder.id, {
-                            status: OrderStatus.HOLD,
-                            holdReason: reason.trim(),
-                            previousStatus: selectedOrder.status,
-                            notes: updatedNotes,
-                            updatedAt: Date.now()
-                          });
+                          await onUpdateOrder(selectedOrder.id, { status: OrderStatus.HOLD, holdReason: reason.trim(), previousStatus: selectedOrder.status, notes: updatedNotes, updatedAt: Date.now() });
                           setSelectedOrder(prev => prev ? { ...prev, status: OrderStatus.HOLD, holdReason: reason.trim(), previousStatus: selectedOrder.status, notes: updatedNotes } : null);
                           alert("Order put on HOLD.");
-                        } catch (e) {
-                          alert("Action failed.");
-                        } finally {
-                          setIsProcessing(false);
-                        }
+                        } catch (e) { alert("Action failed."); } finally { setIsProcessing(false); }
                       }}
-                      className="px-6 py-4 bg-red-100 text-red-700 rounded-2xl font-bold hover:bg-red-200 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+                      className="px-5 py-3 bg-red-50 text-red-700 border border-red-200 rounded-xl font-bold hover:bg-red-100 transition-all disabled:opacity-50 text-xs"
                     >
                       Hold
                     </button>
@@ -444,43 +299,38 @@ export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrd
                   <button
                     onClick={handleFinishProduction}
                     disabled={isProcessing || selectedOrder.status === OrderStatus.HOLD}
-                    className="flex-1 py-5 bg-black text-white rounded-2xl font-bold hover:bg-gray-800 transition-all shadow-xl flex items-center justify-center gap-2 group disabled:opacity-70"
+                    className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-70 text-sm"
                   >
                     {isProcessing ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Finishing...
-                      </>
+                      <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Finishing...</>
                     ) : (
-                      <>
-                        <CheckCircle size={22} className="group-hover:translate-y-[-2px] transition-transform" />
-                        {selectedOrder.status === OrderStatus.HOLD ? 'Hold Active' : 'Finish Production & Move to Delivery'}
-                      </>
+                      <><CheckCircle size={16} />{selectedOrder.status === OrderStatus.HOLD ? 'Hold Active' : 'Finish Production & Move to Delivery'}</>
                     )}
                   </button>
                 </div>
               </div>
             </motion.div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center p-12 bg-gray-50 border border-dashed border-gray-200 rounded-[2rem] text-center">
-              <div className="w-24 h-24 bg-white rounded-full shadow-lg flex items-center justify-center mb-6">
-                <Factory className="text-gray-300" size={48} />
+            <div className="h-full flex flex-col items-center justify-center p-12 bg-white border border-dashed border-slate-200 rounded-3xl text-center min-h-64">
+              <div className="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center mb-4">
+                <Factory className="text-slate-300" size={32} />
               </div>
-              <h4 className="text-2xl font-bold text-gray-900">Work Station</h4>
-              <p className="text-gray-500 max-w-sm mt-3 text-lg">Pick an order to access design files and start production workflow.</p>
+              <h4 className="text-base font-black text-slate-700">Work Station</h4>
+              <p className="text-slate-400 max-w-sm mt-2 text-xs font-medium">Pick an order to access design files and start production workflow.</p>
             </div>
           )}
         </div>
       </div>
-
-
 
       {selectedHubOrder && (
         <OrderDetailModal
           order={selectedHubOrder}
           onClose={() => setSelectedHubOrder(null)}
           isAdmin={isAdmin}
-          onUpdateOrder={onUpdateOrder}
+          onUpdateOrder={async (id, updates) => {
+            await onUpdateOrder(id, updates);
+            setSelectedHubOrder(prev => prev && prev.id === id ? { ...prev, ...updates } : null);
+          }}
           onUpdateStatus={(status) => {
             if (window.confirm(`Change order status to ${status}?`)) {
               onUpdateOrder(selectedHubOrder.id, { status });

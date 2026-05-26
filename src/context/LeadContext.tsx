@@ -64,7 +64,7 @@ interface LeadContextType {
   addInvoice: (invoice: Omit<Invoice, 'id'>) => Promise<void>;
   updateInvoice: (id: string, invoice: Partial<Invoice>) => Promise<void>;
   deleteInvoice: (id: string) => Promise<void>;
-  addOrder: (order: Partial<Order>) => Promise<void>;
+  addOrder: (order: Partial<Order>) => Promise<any>;
   updateOrder: (id: string, order: Partial<Order>) => Promise<void>;
   deleteOrder: (id: string) => Promise<void>;
   addInventoryMovement: (movement: Omit<InventoryMovement, 'id' | 'createdAt'>) => Promise<void>;
@@ -124,10 +124,10 @@ export function LeadProvider({ children }: { children: ReactNode }) {
 
     // Leads subscription - only for applicable roles
     let unsubscribeLeads = () => { };
-    if (user.role === 'admin' || user.role === 'marketing' || user.role === 'user') {
+    if (user.role === 'admin' || user.role === 'marketing' || user.role === 'user' || user.role === 'staff') {
       const leadsRef = collection(db, 'leads');
-      // If admin, show all leads. Otherwise, show only leads created by the user.
-      const qLeads = user.role === 'admin'
+      // If admin or staff, show all leads. Otherwise, show only leads created by the user.
+      const qLeads = (user.role === 'admin' || user.role === 'staff')
         ? query(leadsRef)
         : query(leadsRef, where('createdBy', '==', user.id));
 
@@ -144,9 +144,9 @@ export function LeadProvider({ children }: { children: ReactNode }) {
 
     // Invoices subscription - only for applicable roles
     let unsubscribeInvoices = () => { };
-    if (user.role === 'admin' || user.role === 'marketing' || user.role === 'user' || user.role === 'accounts') {
+    if (user.role === 'admin' || user.role === 'marketing' || user.role === 'user' || user.role === 'accounts' || user.role === 'staff') {
       const invoicesRef = collection(db, 'invoices');
-      const qInvoices = user.role === 'admin'
+      const qInvoices = (user.role === 'admin' || user.role === 'staff')
         ? query(invoicesRef)
         : query(invoicesRef, where('createdBy', '==', user.id));
 
@@ -282,6 +282,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         updatedAt: Date.now(),
       });
       await setDoc(doc(db, 'orders', orderId), newOrder);
+      return newOrder as Order;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'orders');
     }

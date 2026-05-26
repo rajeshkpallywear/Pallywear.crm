@@ -5,6 +5,7 @@ import { Order, OrderStatus } from '../types';
 import ImageViewer from './ImageViewer';
 import WorkflowVisualizer from './WorkflowVisualizer';
 import { useState, useEffect } from 'react';
+import { downloadOrderPDF } from '../lib/pdfHelper';
 
 interface OrderDetailModalProps {
   order: Order;
@@ -20,6 +21,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
   const [editedOrder, setEditedOrder] = useState<Order>(order);
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const [confirmingTarget, setConfirmingTarget] = useState<'accounts' | 'design' | null>(null);
 
   useEffect(() => {
     setEditedOrder(order);
@@ -74,6 +76,16 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
             <span className="text-xs font-mono text-gray-400 mt-1 uppercase tracking-widest">Access Protocol - ID: #{order.id}</span>
           </div>
           <div className="flex items-center gap-3">
+            {!isEditing && (
+              <button
+                onClick={() => downloadOrderPDF(order)}
+                className="px-6 py-3 bg-white text-brand-primary border border-gray-200 hover:border-brand-primary rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-brand-primary/5 transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+                title="Download Order PDF"
+              >
+                <Download size={13} />
+                <span>PDF Download</span>
+              </button>
+            )}
             {isAdmin && !isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
@@ -109,7 +121,182 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
         </div>
 
         <div className="p-8 flex flex-col gap-8 max-h-[70vh] overflow-y-auto">
-          <WorkflowVisualizer order={order} />
+          {/* Design Attachments Room with full HD & download */}
+          {(() => {
+            const designFilesList: {
+              id: string;
+              source: string;
+              url: string;
+              type: 'image' | 'pdf' | 'zip' | 'other';
+              color: string;
+              textColor: string;
+            }[] = [];
+
+            if (order.designAttachments) {
+              order.designAttachments.forEach((url, i) => {
+                designFilesList.push({
+                  id: `design-${i}`,
+                  source: 'Art Studio Design',
+                  url,
+                  type: url.startsWith('data:image/') || url.includes('.png') || url.includes('.jpg') || url.includes('.jpeg') ? 'image' : 'other',
+                  color: 'bg-purple-100/60 border-purple-200 text-purple-700',
+                  textColor: 'text-purple-700'
+                });
+              });
+            }
+
+            if (order.staffImages) {
+              order.staffImages.forEach((url, i) => {
+                designFilesList.push({
+                  id: `staff-img-${i}`,
+                  source: 'Customer Intake Reference',
+                  url,
+                  type: 'image',
+                  color: 'bg-emerald-100/60 border-emerald-200 text-emerald-700',
+                  textColor: 'text-emerald-700'
+                });
+              });
+            }
+
+            if (order.staffPdfs) {
+              order.staffPdfs.forEach((url, i) => {
+                designFilesList.push({
+                  id: `staff-pdf-${i}`,
+                  source: 'Requirement Specs PDF',
+                  url,
+                  type: 'pdf',
+                  color: 'bg-indigo-100/60 border-indigo-200 text-indigo-700',
+                  textColor: 'text-indigo-700'
+                });
+              });
+            }
+
+            if (order.machineFiles) {
+              order.machineFiles.forEach((url, i) => {
+                designFilesList.push({
+                  id: `machine-${i}`,
+                  source: 'Embroidery Machine Outward (ZIP)',
+                  url,
+                  type: 'zip',
+                  color: 'bg-blue-100/60 border-blue-200 text-blue-700',
+                  textColor: 'text-blue-700'
+                });
+              });
+            }
+
+            if (order.orderManagementAttachments) {
+              order.orderManagementAttachments.forEach((url, i) => {
+                designFilesList.push({
+                  id: `om-${i}`,
+                  source: 'Work Orders File',
+                  url,
+                  type: url.includes('.pdf') ? 'pdf' : (url.includes('.zip') ? 'zip' : 'image'),
+                  color: 'bg-cyan-100/60 border-cyan-200 text-cyan-700',
+                  textColor: 'text-cyan-700'
+                });
+              });
+            }
+
+            if (order.accountsAttachments) {
+              order.accountsAttachments.forEach((url, i) => {
+                designFilesList.push({
+                  id: `accounts-${i}`,
+                  source: 'Billing Receipt Docs',
+                  url,
+                  type: url.startsWith('data:image/') || url.includes('.png') || url.includes('.jpg') || url.includes('.jpeg') ? 'image' : 'pdf',
+                  color: 'bg-amber-100/60 border-amber-200 text-amber-700',
+                  textColor: 'text-amber-700'
+                });
+              });
+            }
+
+            return (
+              <div className="bg-slate-50 rounded-[32px] p-6 border border-slate-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-purple-600 animate-pulse inline-block"></span>
+                      ACTIVE DESIGN ATTACHMENTS & REFERENCES
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-medium">Browse design specifications, active drawings, and machine patterns.</p>
+                  </div>
+                  <span className="px-3 py-1 bg-white border border-slate-200 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+                    {designFilesList.length} Total Files
+                  </span>
+                </div>
+
+                {designFilesList.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {designFilesList.map((file, idx) => (
+                      <div
+                        key={file.id}
+                        className="bg-white border border-slate-100 rounded-2xl p-4 flex flex-col justify-between hover:shadow-lg transition-all hover:border-brand-primary/20 group relative overflow-hidden"
+                      >
+                        <div className="flex items-start gap-3">
+                          {/* Left visual representation */}
+                          <div
+                            onClick={() => setViewingImage(file.url)}
+                            className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-100 flex-shrink-0 overflow-hidden flex items-center justify-center text-slate-400 group-hover:border-brand-primary/20 transition-colors cursor-pointer"
+                          >
+                            {file.type === 'image' ? (
+                              <img src={file.url} className="w-full h-full object-cover" />
+                            ) : (
+                              <FileText size={28} className={file.textColor} />
+                            )}
+                          </div>
+
+                          {/* Right info text */}
+                          <div className="flex-1 min-w-0">
+                            <span className={`inline-block text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md mb-1 ${file.color} ${file.textColor}`}>
+                              {file.source}
+                            </span>
+                            <h5 className="text-xs font-bold text-slate-700 truncate" title={`Attachment #${idx + 1}`}>
+                              {`Attachment #${idx + 1}`}
+                            </h5>
+                            <p className="text-[9px] text-slate-400 font-mono mt-0.5 uppercase">
+                              {file.type === 'image' ? 'Image File (HD)' : file.type === 'pdf' ? 'PDF Document' : file.type === 'zip' ? 'Machine ZIP' : 'Attached Spec'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Integrated view/download button actions */}
+                        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-50">
+                          <button
+                            onClick={() => setViewingImage(file.url)}
+                            className="flex-1 py-1.5 px-2 bg-brand-primary text-white hover:bg-brand-primary/95 rounded-lg font-black text-[9px] uppercase tracking-wider active:scale-95 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            View Full HD
+                          </button>
+                          <button
+                            onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = file.url;
+                              link.download = `pallywear_design_${order.id.slice(-6)}_attachment_${idx + 1}`;
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
+                            className="py-1.5 px-2 bg-slate-150 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg font-black text-[9px] uppercase tracking-wider active:scale-95 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Download size={10} />
+                            <span>Download</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center bg-white border border-slate-150 rounded-2xl flex flex-col items-center justify-center">
+                    <FileText size={40} className="text-slate-300 mb-2" />
+                    <p className="text-xs font-black text-slate-700 uppercase tracking-widest">No Design Files Available</p>
+                    <p className="text-[10px] text-slate-400 max-w-xs mt-1">
+                      No customer sketches or designer drafts have been uploaded for order #{order.id.slice(-6)} yet.
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
@@ -406,32 +593,110 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                     ) : (
                       <div className="space-y-2">
                         {order.status === OrderStatus.PENDING && (
-                          <button
-                            disabled={isProcessingAction}
-                            onClick={async () => {
-                              if (window.confirm("Send this order manually to Accounts?")) {
-                                setIsProcessingAction(true);
-                                try {
-                                  if (onUpdateOrder) {
-                                    await onUpdateOrder(order.id, {
-                                      status: OrderStatus.ACCOUNTS,
-                                      updatedAt: Date.now()
-                                    });
-                                  } else if (onUpdateStatus) {
-                                    onUpdateStatus(OrderStatus.ACCOUNTS);
+                          <div className="space-y-2">
+                            {((order.financials?.advancePay || 0) <= 0) && (
+                              <p className="text-[10px] text-amber-650 font-black text-center uppercase tracking-wider">
+                                * Advance payment must be received to send to Accounts
+                              </p>
+                            )}
+                            {confirmingTarget === 'accounts' ? (
+                              <div className="bg-amber-50 border border-amber-300 p-4 rounded-xl space-y-2 text-center">
+                                <p className="text-xs font-black text-amber-900 uppercase tracking-wider">Confirm manual send to Accounts?</p>
+                                <div className="flex gap-2 justify-center">
+                                  <button
+                                    onClick={async () => {
+                                      setConfirmingTarget(null);
+                                      setIsProcessingAction(true);
+                                      try {
+                                        if (onUpdateOrder) {
+                                          await onUpdateOrder(order.id, {
+                                            status: OrderStatus.ACCOUNTS,
+                                            updatedAt: Date.now()
+                                          });
+                                        } else if (onUpdateStatus) {
+                                          onUpdateStatus(OrderStatus.ACCOUNTS);
+                                        }
+                                        alert("Order successfully sent to Accounts.");
+                                      } catch (e) {
+                                        alert("Failed to send order.");
+                                      } finally {
+                                        setIsProcessingAction(false);
+                                      }
+                                    }}
+                                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-black text-[10px] uppercase tracking-wider cursor-pointer flex-1"
+                                  >
+                                    Confirm Send
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmingTarget(null)}
+                                    className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg font-black text-[10px] uppercase tracking-wider cursor-pointer flex-1"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                disabled={isProcessingAction}
+                                onClick={() => {
+                                  if ((order.financials?.advancePay || 0) <= 0) {
+                                    alert("Cannot send to Accounts: Send to Accounts is only permitted when an advance amount has been received (Advance Pay > 0).");
+                                    return;
                                   }
-                                  alert("Order successfully sent to Accounts.");
-                                } catch (e) {
-                                  alert("Failed to send order.");
-                                } finally {
-                                  setIsProcessingAction(false);
-                                }
-                              }
-                            }}
-                            className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 font-black cursor-pointer"
-                          >
-                            <CheckCircle size={14} /> Send to Accounts
-                          </button>
+                                  setConfirmingTarget('accounts');
+                                }}
+                                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 font-black cursor-pointer"
+                              >
+                                <CheckCircle size={14} /> Send to Accounts
+                              </button>
+                            )}
+
+                            {confirmingTarget === 'design' ? (
+                              <div className="bg-purple-50 border border-purple-300 p-4 rounded-xl space-y-2 text-center">
+                                <p className="text-xs font-black text-purple-900 uppercase tracking-wider">Confirm manual send to Designers?</p>
+                                <div className="flex gap-2 justify-center">
+                                  <button
+                                    onClick={async () => {
+                                      setConfirmingTarget(null);
+                                      setIsProcessingAction(true);
+                                      try {
+                                        if (onUpdateOrder) {
+                                          await onUpdateOrder(order.id, {
+                                            status: OrderStatus.DESIGN,
+                                            updatedAt: Date.now()
+                                          });
+                                        } else if (onUpdateStatus) {
+                                          onUpdateStatus(OrderStatus.DESIGN);
+                                        }
+                                        alert("Order successfully sent to Designers.");
+                                      } catch (e) {
+                                        alert("Failed to send order.");
+                                      } finally {
+                                        setIsProcessingAction(false);
+                                      }
+                                    }}
+                                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-black text-[10px] uppercase tracking-wider cursor-pointer flex-1"
+                                  >
+                                    Confirm Send
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmingTarget(null)}
+                                    className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg font-black text-[10px] uppercase tracking-wider cursor-pointer flex-1"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                disabled={isProcessingAction}
+                                onClick={() => setConfirmingTarget('design')}
+                                className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 font-black cursor-pointer"
+                              >
+                                <CheckCircle size={14} /> Send to Designers
+                              </button>
+                            )}
+                          </div>
                         )}
                         <button
                           disabled={isProcessingAction}

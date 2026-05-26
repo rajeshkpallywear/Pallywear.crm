@@ -128,11 +128,7 @@ export default function DigitizingDashboard({ orders, onUpdateOrder, isAdmin }: 
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase italic">Digitizing & Embroidery</h2>
-          <p className="text-gray-500 font-medium">Process artworks and upload manufacturing ZIP files</p>
-        </div>
+      <div className="flex items-center justify-end mb-6">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsMsgSidebarOpen(true)}

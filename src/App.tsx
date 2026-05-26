@@ -16,7 +16,18 @@ import Store from './pages/Store';
 import { UserRole } from './types';
 
 const ProtectedRoute = ({ children, adminOnly = false }: { children: React.ReactNode, adminOnly?: boolean }) => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-[#3291B6] border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-500 text-sm font-medium animate-pulse">Verifying active session...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) return <Navigate to="/login" />;
 

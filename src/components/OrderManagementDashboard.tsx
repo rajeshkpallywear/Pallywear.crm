@@ -43,16 +43,16 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
 
   const filteredOrders = orders.filter(o => {
     if (selectedSection === 'hold') {
-      return o.status === OrderStatus.HOLD;
+      return o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ORDER_MANAGEMENT;
     }
     if (selectedSection === 'completed') {
       return o.status === OrderStatus.DELIVERED;
     }
-    return true;
+    return o.status === OrderStatus.ORDER_MANAGEMENT;
   });
 
-  const totalOrdersCount = orders.length;
-  const holdOrdersCount = orders.filter(o => o.status === OrderStatus.HOLD).length;
+  const totalOrdersCount = orders.filter(o => o.status === OrderStatus.ORDER_MANAGEMENT).length;
+  const holdOrdersCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ORDER_MANAGEMENT).length;
   const completedOrdersCount = orders.filter(o => o.status === OrderStatus.DELIVERED).length;
 
   // Auto-select first order if none is selected
@@ -506,11 +506,7 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Order Management</h2>
-          <p className="text-gray-500 mt-1">Finalize files and share with production team</p>
-        </div>
+      <div className="flex items-center justify-end mb-6">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsMsgSidebarOpen(true)}

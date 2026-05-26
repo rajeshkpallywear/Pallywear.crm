@@ -112,33 +112,24 @@ export default function InventoryManagement({ userRole }: InventoryManagementPro
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-            <Package className="text-brand-primary" size={24} />
-            Inventory Management
-          </h2>
-          <p className="text-sm text-gray-500 font-medium">Track inward and outward movements</p>
+      {!isStaff && (
+        <div className="flex justify-end gap-2 mb-4">
+          <button
+            onClick={() => setActiveTab('inward')}
+            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-green-700 transition-all shadow-sm text-xs"
+          >
+            <ArrowDownLeft size={16} />
+            Record Inward
+          </button>
+          <button
+            onClick={() => setActiveTab('outward')}
+            className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-orange-700 transition-all shadow-sm text-xs"
+          >
+            <ArrowUpRight size={16} />
+            Record Outward
+          </button>
         </div>
-        {!isStaff && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab('inward')}
-              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-green-700 transition-all shadow-sm text-xs"
-            >
-              <ArrowDownLeft size={16} />
-              Record Inward
-            </button>
-            <button
-              onClick={() => setActiveTab('outward')}
-              className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-orange-700 transition-all shadow-sm text-xs"
-            >
-              <ArrowUpRight size={16} />
-              Record Outward
-            </button>
-          </div>
-        )}
-      </div>
+      )}
 
       <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden min-h-[400px]">
         <div className="flex border-b border-gray-100 bg-[#f9f9f9]">

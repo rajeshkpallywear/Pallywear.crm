@@ -16,9 +16,10 @@ import { OrderStatus } from '../types';
 
 interface LeadManagerProps {
   hideAdd?: boolean;
+  autoOpenAdd?: boolean;
 }
 
-export default function LeadManager({ hideAdd = false }: LeadManagerProps) {
+export default function LeadManager({ hideAdd = false, autoOpenAdd = false }: LeadManagerProps) {
   const { leads, addLead, updateLead, deleteLead, addOrder } = useLeads();
   const { user } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -62,6 +63,12 @@ export default function LeadManager({ hideAdd = false }: LeadManagerProps) {
     });
     setIsModalOpen(true);
   };
+
+  React.useEffect(() => {
+    if (autoOpenAdd) {
+      handleOpenAdd();
+    }
+  }, [autoOpenAdd]);
 
   const calculateFinancials = (total: number, code: string) => {
     let discount = 0;

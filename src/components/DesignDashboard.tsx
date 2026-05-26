@@ -67,8 +67,6 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
 
   // Processing States
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isStaffChatOpen, setIsStaffChatOpen] = useState(false);
-  const [selectedItemIdForStaffChat, setSelectedItemIdForStaffChat] = useState<string | null>(null);
 
   // Local File Assemble State
   const [designFiles, setDesignFiles] = useState<string[]>([]);
@@ -113,7 +111,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
 
   useEffect(() => {
     loadStaffConversations();
-  }, [isStaffChatOpen]);
+  }, []);
 
   // Load Order Management Chats dynamically when an order is opened or counter changes
   useEffect(() => {
@@ -310,9 +308,8 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
 
         localStorage.setItem('pallywear_conversations', JSON.stringify(updated));
         loadStaffConversations();
-        setSelectedItemIdForStaffChat(item.id);
         alert(`Success: Consultation claimed by you! Opening Staff dialogue panel...`);
-        setIsStaffChatOpen(true);
+        window.dispatchEvent(new CustomEvent('open-conversations-feed', { detail: item.id }));
       }
     } catch (e) {
       console.error(e);
@@ -331,8 +328,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
         setMachineFiles(fullOrder.machineFiles || []);
       }
     } else {
-      setSelectedItemIdForStaffChat(item.id);
-      setIsStaffChatOpen(true);
+      window.dispatchEvent(new CustomEvent('open-conversations-feed', { detail: item.id }));
     }
   };
 
@@ -518,14 +514,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
   return (
     <div className="space-y-8 animate-fadeIn">
       {/* Header section with synchronized database updates */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Palette className="text-brand-primary" size={28} />
-            <h2 className="text-3xl font-black text-gray-900 tracking-tight">Artwork & Design Studio</h2>
-          </div>
-          <p className="text-gray-500 mt-1">Manage physical vector traces, machine language digitizing files, and team conversations</p>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4 mb-6">
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => window.location.reload()}
@@ -800,19 +789,6 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
         </div>
       </div>
 
-      {/* Staff Chats Embedded Modal / Conversation Side-Drawer */}
-      <ConversationDashboard
-        isOpen={isStaffChatOpen}
-        onClose={() => {
-          setIsStaffChatOpen(false);
-          setSelectedItemIdForStaffChat(null);
-        }}
-        currentUser={user || { name: designerName, role: 'designer' }}
-        orders={orders}
-        onUpdateOrder={onUpdateOrder}
-        initialSelectedId={selectedItemIdForStaffChat}
-      />
-
       {/* High-Fidelity Interactive Workspace Modal for Selected Order */}
       {selectedOrder && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1032,8 +1008,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
                           <p className="font-semibold text-gray-500">Sales/Staff Dialogues have a dedicated workspace panel</p>
                           <button
                             onClick={() => {
-                              setSelectedItemIdForStaffChat(selectedOrder.id);
-                              setIsStaffChatOpen(true);
+                              window.dispatchEvent(new CustomEvent('open-conversations-feed', { detail: selectedOrder.id }));
                             }}
                             className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[10px] font-extrabold uppercase transition-all shadow-sm cursor-pointer border-none"
                           >

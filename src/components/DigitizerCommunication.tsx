@@ -75,11 +75,7 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase italic text-left">Digitizer Communication</h2>
-          <p className="text-gray-500 font-medium text-sm text-left">Upload PDF/Images (Max 100MB) for embroidery processing</p>
-        </div>
+      <div className="flex items-center justify-end mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
           <input
