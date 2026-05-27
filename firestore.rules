@@ -17,7 +17,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email in ['rajeshkpallywear@gmail.com', 'ceo@pallywear.com', 'daniel.smpallywear@gmail.com'] ||
+        request.auth.token.email in ['rajeshkpallywear@gmail.com', 'ceo@pallywear.com'] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
@@ -40,7 +40,7 @@ service cloud.firestore {
         return data.keys().hasAll(['id', 'email', 'role', 'name', 'createdAt']) &&
                data.id is string &&
                data.email is string &&
-               data.role in ['admin', 'staff', 'accounts', 'order_management', 'production', 'delivery', 'marketing', 'user', 'designer', 'digitizer'] &&
+               data.role in ['admin', 'staff', 'accounts', 'order_management', 'production', 'delivery', 'marketing', 'user', 'designer', 'digitizer', 'telecaller'] &&
                data.name is string &&
                data.createdAt is string;
       }
@@ -48,14 +48,13 @@ service cloud.firestore {
       function isAdminRoleEligible(email) {
         return email == 'ceo@pallywear.com' || 
                email == 'rajeshkpallywear@gmail.com' || 
-               email == 'daniel.smpallywear@gmail.com' ||
                email.matches('(?i)^admin.*') || 
                email.matches('(?i)^ceo.*');
       }
 
       function isStaff() {
         return isSignedIn() && (
-          hasUserRole(['staff', 'admin', 'designer', 'accounts', 'order_management', 'production', 'delivery', 'marketing', 'digitizer']) ||
+          hasUserRole(['staff', 'admin', 'designer', 'accounts', 'order_management', 'production', 'delivery', 'marketing', 'digitizer', 'telecaller']) ||
           isAdmin() ||
           request.auth.token.email.matches('(?i)^staff.*')
         );
@@ -95,7 +94,7 @@ service cloud.firestore {
         return isSignedIn() && (
           resource.data.createdBy == request.auth.uid || 
           isAdmin() || 
-          hasUserRole(['admin', 'marketing', 'user', 'staff', 'accounts', 'order_management', 'digitizer'])
+          hasUserRole(['admin', 'marketing', 'user', 'staff', 'accounts', 'order_management', 'digitizer', 'telecaller'])
         );
       }
 
@@ -164,6 +163,11 @@ service cloud.firestore {
         isAdmin() ||
         hasUserRole(['admin', 'order_management'])
       );
+    }
+
+    // Leaves Collection
+    match /leaves/{leaveId} {
+      allow read, write: if isSignedIn();
     }
   }
 }

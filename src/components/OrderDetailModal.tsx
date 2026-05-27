@@ -4,7 +4,7 @@ import { X, User, Phone, MapPin, FileText, Globe, Clock, AlertCircle, CheckCircl
 import { Order, OrderStatus } from '../types';
 import ImageViewer from './ImageViewer';
 import WorkflowVisualizer from './WorkflowVisualizer';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { downloadOrderPDF } from '../lib/pdfHelper';
 
 interface OrderDetailModalProps {
@@ -26,6 +26,34 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
   useEffect(() => {
     setEditedOrder(order);
   }, [order]);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0 || !onUpdateOrder) return;
+    
+    const files = Array.from(e.target.files);
+    try {
+      const base64Promises = files.map((file: File) => {
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = error => reject(error);
+        });
+      });
+      
+      const base64Images = await Promise.all(base64Promises);
+      const updatedStaffImages = [...(order.staffImages || []), ...base64Images];
+      
+      await onUpdateOrder(order.id, {
+        staffImages: updatedStaffImages,
+        updatedAt: Date.now()
+      });
+      alert("Images uploaded successfully!");
+    } catch (err) {
+      console.error("Image upload failed", err);
+      alert("Failed to upload images.");
+    }
+  };
 
   const handleSave = async () => {
     if (!onUpdateOrder) return;
@@ -212,7 +240,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
 
             return (
               <div className="bg-slate-50 rounded-[32px] p-6 border border-slate-200">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                   <div>
                     <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-purple-600 animate-pulse inline-block"></span>
@@ -220,9 +248,23 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                     </h4>
                     <p className="text-[11px] text-slate-500 font-medium">Browse design specifications, active drawings, and machine patterns.</p>
                   </div>
-                  <span className="px-3 py-1 bg-white border border-slate-200 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
-                    {designFilesList.length} Total Files
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {onUpdateOrder && (
+                      <label className="bg-brand-primary hover:bg-brand-primary/95 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1">
+                        Upload Image
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          multiple 
+                          className="hidden" 
+                          onChange={handleImageUpload} 
+                        />
+                      </label>
+                    )}
+                    <span className="px-3 py-2 bg-white border border-slate-200 text-slate-650 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+                      {designFilesList.length} Total Files
+                    </span>
+                  </div>
                 </div>
 
                 {designFilesList.length > 0 ? (
@@ -551,7 +593,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                 </div>
               </div>
 
-              {onUpdateStatus && (
+              {(onUpdateStatus || onUpdateOrder) && (
                 <div className="bg-gray-900 p-6 rounded-[32px] shadow-xl text-white space-y-4">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Management Actions</p>
                   <div className="grid grid-cols-1 gap-2">
@@ -698,11 +740,108 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                             )}
                           </div>
                         )}
+
+                        {order.status === OrderStatus.ACCOUNTS && (
+                          <button
+                            disabled={isProcessingAction}
+                            onClick={async () => {
+                              setIsProcessingAction(true);
+                              try {
+                                if (onUpdateOrder) {
+                                  await onUpdateOrder(order.id, { status: OrderStatus.ORDER_MANAGEMENT, updatedAt: Date.now() });
+                                } else if (onUpdateStatus) {
+                                  onUpdateStatus(OrderStatus.ORDER_MANAGEMENT);
+                                }
+                                alert("Order moved to Order Management.");
+                              } catch (e) {
+                                alert("Action failed.");
+                              } finally {
+                                setIsProcessingAction(false);
+                              }
+                            }}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 font-black cursor-pointer"
+                          >
+                            <CheckCircle size={14} /> Move to Order Management
+                          </button>
+                        )}
+
+                        {order.status === OrderStatus.ORDER_MANAGEMENT && (
+                          <button
+                            disabled={isProcessingAction}
+                            onClick={async () => {
+                              setIsProcessingAction(true);
+                              try {
+                                if (onUpdateOrder) {
+                                  await onUpdateOrder(order.id, { status: OrderStatus.PRODUCTION, updatedAt: Date.now() });
+                                } else if (onUpdateStatus) {
+                                  onUpdateStatus(OrderStatus.PRODUCTION);
+                                }
+                                alert("Order moved to Production.");
+                              } catch (e) {
+                                alert("Action failed.");
+                              } finally {
+                                setIsProcessingAction(false);
+                              }
+                            }}
+                            className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 font-black cursor-pointer"
+                          >
+                            <CheckCircle size={14} /> Move to Production
+                          </button>
+                        )}
+
+                        {order.status === OrderStatus.PRODUCTION && (
+                          <button
+                            disabled={isProcessingAction}
+                            onClick={async () => {
+                              setIsProcessingAction(true);
+                              try {
+                                if (onUpdateOrder) {
+                                  await onUpdateOrder(order.id, { status: OrderStatus.DELIVERY, updatedAt: Date.now() });
+                                } else if (onUpdateStatus) {
+                                  onUpdateStatus(OrderStatus.DELIVERY);
+                                }
+                                alert("Order moved to Delivery.");
+                              } catch (e) {
+                                alert("Action failed.");
+                              } finally {
+                                setIsProcessingAction(false);
+                              }
+                            }}
+                            className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 font-black cursor-pointer"
+                          >
+                            <CheckCircle size={14} /> Move to Delivery
+                          </button>
+                        )}
+
+                        {order.status === OrderStatus.DELIVERY && (
+                          <button
+                            disabled={isProcessingAction}
+                            onClick={async () => {
+                              setIsProcessingAction(true);
+                              try {
+                                if (onUpdateOrder) {
+                                  await onUpdateOrder(order.id, { status: OrderStatus.DELIVERED, updatedAt: Date.now() });
+                                } else if (onUpdateStatus) {
+                                  onUpdateStatus(OrderStatus.DELIVERED);
+                                }
+                                alert("Order marked as Delivered / Completed.");
+                              } catch (e) {
+                                alert("Action failed.");
+                              } finally {
+                                setIsProcessingAction(false);
+                              }
+                            }}
+                            className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 font-black cursor-pointer"
+                          >
+                            <CheckCircle size={14} /> Mark as Delivered / Completed
+                          </button>
+                        )}
+
                         <button
                           disabled={isProcessingAction}
                           onClick={async () => {
                             const reason = window.prompt("Enter Mandatory Hold Reason:");
-                            if (reason === null) return; // Cancelled
+                            if (reason === null) return;
                             if (!reason.trim()) {
                               alert("Hold reason is required.");
                               return;

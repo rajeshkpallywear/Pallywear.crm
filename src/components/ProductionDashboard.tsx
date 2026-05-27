@@ -29,16 +29,16 @@ export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrd
 
   const filteredOrders = orders.filter(o => {
     if (selectedSection === 'hold') {
-      return o.status === OrderStatus.HOLD;
+      return o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.PRODUCTION;
     }
     if (selectedSection === 'completed') {
       return o.status === OrderStatus.DELIVERED;
     }
-    return true;
+    return o.status === OrderStatus.PRODUCTION;
   });
 
-  const totalOrdersCount = orders.length;
-  const holdOrdersCount = orders.filter(o => o.status === OrderStatus.HOLD).length;
+  const totalOrdersCount = orders.filter(o => o.status === OrderStatus.PRODUCTION).length;
+  const holdOrdersCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.PRODUCTION).length;
   const completedOrdersCount = orders.filter(o => o.status === OrderStatus.DELIVERED).length;
 
   const handleFinishProduction = async () => {

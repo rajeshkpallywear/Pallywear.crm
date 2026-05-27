@@ -95,7 +95,6 @@ const isAdminEmail = (email: string) => {
   const lowerEmail = email.toLowerCase();
   return lowerEmail === 'ceo@pallywear.com' ||
     lowerEmail === 'rajeshkpallywear@gmail.com' ||
-    lowerEmail === 'daniel.smpallywear@gmail.com' ||
     lowerEmail === 'admin' ||
     lowerEmail.startsWith('admin') ||
     lowerEmail.startsWith('ceo');
@@ -110,6 +109,7 @@ const getRoleFromEmail = (email: string): UserRole => {
   if (lower.startsWith('order') || lower.startsWith('hub')) return UserRole.ORDER_MANAGEMENT;
   if (lower.startsWith('prod') || lower.startsWith('factory')) return UserRole.PRODUCTION;
   if (lower.startsWith('del') || lower.startsWith('delyvery')) return UserRole.DELIVERY;
+  if (lower.startsWith('tele') || lower.startsWith('call')) return UserRole.TELECALLER;
   return UserRole.STAFF;
 };
 
@@ -196,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Sync registered users list
   useEffect(() => {
-    if (!user || (user.role !== 'admin' && user.role !== 'staff')) {
+    if (!user || (user.role !== 'admin' && user.role !== 'staff' && user.role !== 'telecaller' && user.role !== UserRole.TELECALLER)) {
       setRegisteredUsers([]);
       return;
     }
@@ -243,40 +243,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { success: true };
     } catch (error: any) {
-      console.log(`Initial login attempt failed for ${normalizedEmail}. Code: ${error.code}`);
-
-      // INTELLIGENT RECOVERY: If user doesn't exist or credentials invalid, try to auto-register
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-        if (password.length >= 6) {
-          console.log(`Attempting auto-registration for: ${normalizedEmail}`);
-          const name = normalizedEmail.split('@')[0].split('.')[0];
-          const regResult = await register(name, normalizedEmail, password);
-
-          if (regResult.success) {
-            console.log(`Auto-registration successful for: ${normalizedEmail}`);
-            return regResult;
-          }
-
-          // If registration failed because user already exists, then the password typed was objectively wrong
-          if (regResult.code === 'auth/email-already-in-use' || (regResult.message && regResult.message.includes('email-already-in-use'))) {
-            return {
-              success: false,
-              message: 'This account already exists, but the password you entered is incorrect. Please use your original password.'
-            };
-          }
-
-          // If registration failed for any other reason (e.g. Firestore rules)
-          return {
-            success: false,
-            message: `Account creation failed: ${regResult.message || 'Check network connection.'}`
-          };
-        }
-      }
-
-      console.error('Final login error:', error.code, error.message);
+      console.error('Login error:', error.code, error.message);
       return {
         success: false,
-        message: 'Invalid email or password. For a new account, use at least 6 characters.'
+        message: 'Wrong email or password.'
       };
     }
   };

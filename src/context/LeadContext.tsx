@@ -12,7 +12,7 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Lead, Invoice, Order, InventoryMovement } from '../types';
+import { Lead, Invoice, Order, InventoryMovement, UserRole } from '../types';
 import { useAuth } from './AuthContext';
 
 enum OperationType {
@@ -124,7 +124,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
 
     // Leads subscription - only for applicable roles
     let unsubscribeLeads = () => { };
-    if (user.role === 'admin' || user.role === 'marketing' || user.role === 'user' || user.role === 'staff') {
+    if (user.role === 'admin' || user.role === 'marketing' || user.role === 'user' || user.role === 'staff' || user.role === 'telecaller' || user.role === UserRole.TELECALLER) {
       const leadsRef = collection(db, 'leads');
       // If admin or staff, show all leads. Otherwise, show only leads created by the user.
       const qLeads = (user.role === 'admin' || user.role === 'staff')

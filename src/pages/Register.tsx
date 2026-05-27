@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../components/Button';
 import { Layout, Mail, Lock, User, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -14,11 +14,19 @@ export default function Register() {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<UserRole>(UserRole.STAFF);
+  const [role, setRole] = useState<UserRole>(UserRole.TELECALLER);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const { register, googleLogin, logout } = useAuth();
+  const { register, googleLogin, logout, user } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+    } else if (user.role !== 'admin' && user.role !== UserRole.ADMIN) {
+      navigate('/dashboard');
+    }
+  }, [user, navigate]);
 
   const handleGoogleLogin = async () => {
     setError('');
@@ -27,7 +35,7 @@ export default function Register() {
       const currentUser = auth.currentUser;
       if (currentUser) {
         const email = (currentUser.email || '').toLowerCase();
-        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email === 'daniel.smpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
+        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
         navigate(isAdmin ? '/admin' : '/dashboard');
       } else {
         navigate('/dashboard');
@@ -152,7 +160,7 @@ export default function Register() {
               className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-sm bg-white"
             >
               <option value={UserRole.MARKETING}>Marketing</option>
-              <option value={UserRole.STAFF}>Staff (Front Desk)</option>
+              <option value={UserRole.TELECALLER}>Telecaller</option>
               <option value={UserRole.DESIGNER}>Designer (Art Studio)</option>
               <option value={UserRole.ACCOUNTS}>Accounts</option>
               <option value={UserRole.ORDER_MANAGEMENT}>Order Management</option>

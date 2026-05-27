@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Layers, Package, ChevronRight, FileText, Download, ExternalLink, Paperclip, ZoomIn, Share2, Globe, CreditCard, Trash2, Search, Plus, Activity, Users, Upload, Palette, Send, MessageSquare, Check } from 'lucide-react';
+import { Layers, Package, ChevronRight, FileText, Download, ExternalLink, Paperclip, ZoomIn, Share2, Globe, CreditCard, Trash2, Search, Plus, Activity, Users, Upload, Palette, Send, MessageSquare, Check, Clock, RefreshCw, CheckCircle } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { cn, getDisplayCategory, isOrderSizeValid } from '../lib/utils';
 import OrderDetailModal from './OrderDetailModal';
@@ -33,7 +33,7 @@ interface OrderManagementDashboardProps {
 
 export default function OrderManagementDashboard({ orders, inventory = [], onUpdateOrder, onDeleteOrder, isAdmin }: OrderManagementDashboardProps) {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [selectedSection, setSelectedSection] = useState<'total' | 'hold' | 'completed'>('total');
+  const [selectedSection, setSelectedSection] = useState<'recent' | 'hold' | 'process' | 'completed'>('recent');
   const [selectedHubOrder, setSelectedHubOrder] = useState<Order | null>(null);
   const [managementFiles, setManagementFiles] = useState<string[]>([]);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
@@ -42,17 +42,24 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
   const pendingOrders = orders.filter(o => o.status === OrderStatus.ORDER_MANAGEMENT || (o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ORDER_MANAGEMENT));
 
   const filteredOrders = orders.filter(o => {
+    if (selectedSection === 'recent') {
+      return o.status === OrderStatus.ORDER_MANAGEMENT;
+    }
     if (selectedSection === 'hold') {
       return o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ORDER_MANAGEMENT;
+    }
+    if (selectedSection === 'process') {
+      return [OrderStatus.PRODUCTION, OrderStatus.DELIVERY, OrderStatus.DESIGN].includes(o.status);
     }
     if (selectedSection === 'completed') {
       return o.status === OrderStatus.DELIVERED;
     }
-    return o.status === OrderStatus.ORDER_MANAGEMENT;
+    return false;
   });
 
-  const totalOrdersCount = orders.filter(o => o.status === OrderStatus.ORDER_MANAGEMENT).length;
+  const recentOrdersCount = orders.filter(o => o.status === OrderStatus.ORDER_MANAGEMENT).length;
   const holdOrdersCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.ORDER_MANAGEMENT).length;
+  const processOrdersCount = orders.filter(o => [OrderStatus.PRODUCTION, OrderStatus.DELIVERY, OrderStatus.DESIGN].includes(o.status)).length;
   const completedOrdersCount = orders.filter(o => o.status === OrderStatus.DELIVERED).length;
 
   // Auto-select first order if none is selected
@@ -510,17 +517,17 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsMsgSidebarOpen(true)}
-            className="px-6 py-2 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg flex items-center gap-2 active:scale-95"
+            className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-all shadow-md active:scale-95 outline-none"
+            title="Message to Digitizer"
           >
             <Upload size={18} />
-            <span className="text-xs uppercase tracking-widest font-black">Message to Digitizer</span>
           </button>
           <button
             onClick={() => setIsDesignMsgSidebarOpen(true)}
-            className="px-6 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-all shadow-lg flex items-center gap-2 active:scale-95"
+            className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center hover:bg-purple-700 transition-all shadow-md active:scale-95 outline-none"
+            title="Message to Designer"
           >
             <Palette size={18} />
-            <span className="text-xs uppercase tracking-widest font-black">Message to Designer</span>
           </button>
           <button
             onClick={() => window.location.reload()}
@@ -532,78 +539,94 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
         </div>
       </div>
 
-      {/* Summary Stats Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Summary Stats Section (Icon-only) */}
+      <div className="flex gap-4 mb-6">
+        {/* Card: Recent */}
         <button
-          onClick={() => setSelectedSection('total')}
+          onClick={() => setSelectedSection('recent')}
           className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
-            selectedSection === 'total' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
+            "w-14 h-14 rounded-full border transition-all flex items-center justify-center relative shadow-sm cursor-pointer border-dashed outline-none",
+            selectedSection === 'recent'
+              ? "bg-brand-primary text-white border-brand-primary shadow-md scale-105"
+              : "bg-white border-gray-200 hover:border-brand-primary/50"
           )}
+          title="Recent Orders"
         >
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            selectedSection === 'total' ? "bg-white/20 text-white" : "bg-blue-50 text-blue-600 group-hover:bg-blue-100"
-          )}>
-            <Package size={24} />
-          </div>
-          <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'total' ? "text-white/70" : "text-gray-500")}>
-              Total Orders
-            </p>
-            <p className="text-2xl font-black">{totalOrdersCount}</p>
-            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'total' ? "text-white/60" : "text-gray-400")}>
-              All system orders
+          <Package size={20} />
+          {recentOrdersCount > 0 && (
+            <span className={cn(
+              "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border shadow-sm",
+              selectedSection === 'recent' ? "bg-white text-brand-primary border-white" : "bg-brand-primary text-white border-brand-primary"
+            )}>
+              {recentOrdersCount}
             </span>
-          </div>
+          )}
         </button>
 
+        {/* Card: Hold */}
         <button
           onClick={() => setSelectedSection('hold')}
           className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
-            selectedSection === 'hold' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
+            "w-14 h-14 rounded-full border transition-all flex items-center justify-center relative shadow-sm cursor-pointer border-dashed outline-none",
+            selectedSection === 'hold'
+              ? "bg-red-600 text-white border-red-600 shadow-md scale-105"
+              : "bg-white border-gray-200 hover:border-red-400"
           )}
+          title="Hold Orders"
         >
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            selectedSection === 'hold' ? "bg-white/20 text-white" : "bg-red-50 text-red-600 group-hover:bg-red-100"
-          )}>
-            <Activity size={24} />
-          </div>
-          <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'hold' ? "text-white/70" : "text-gray-500")}>
-              Hold Orders
-            </p>
-            <p className="text-2xl font-black">{holdOrdersCount}</p>
-            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'hold' ? "text-white/60" : "text-gray-400")}>
-              Paused/Specification blocks
+          <Clock size={20} />
+          {holdOrdersCount > 0 && (
+            <span className={cn(
+              "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border shadow-sm",
+              selectedSection === 'hold' ? "bg-white text-red-650 border-white" : "bg-red-600 text-white border-red-600"
+            )}>
+              {holdOrdersCount}
             </span>
-          </div>
+          )}
         </button>
 
+        {/* Card: Process */}
+        <button
+          onClick={() => setSelectedSection('process')}
+          className={cn(
+            "w-14 h-14 rounded-full border transition-all flex items-center justify-center relative shadow-sm cursor-pointer border-dashed outline-none",
+            selectedSection === 'process'
+              ? "bg-indigo-600 text-white border-indigo-600 shadow-md scale-105"
+              : "bg-white border-gray-200 hover:border-indigo-400"
+          )}
+          title="In Process Orders"
+        >
+          <RefreshCw size={20} />
+          {processOrdersCount > 0 && (
+            <span className={cn(
+              "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border shadow-sm",
+              selectedSection === 'process' ? "bg-white text-indigo-650 border-white" : "bg-indigo-600 text-white border-indigo-600"
+            )}>
+              {processOrdersCount}
+            </span>
+          )}
+        </button>
+
+        {/* Card: Completed */}
         <button
           onClick={() => setSelectedSection('completed')}
           className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer",
-            selectedSection === 'completed' ? "bg-brand-primary text-white border-brand-primary shadow-xl" : "bg-white border-gray-100 shadow-sm hover:border-brand-primary/50"
+            "w-14 h-14 rounded-full border transition-all flex items-center justify-center relative shadow-sm cursor-pointer border-dashed outline-none",
+            selectedSection === 'completed'
+              ? "bg-green-600 text-white border-green-600 shadow-md scale-105"
+              : "bg-white border-gray-200 hover:border-green-400"
           )}
+          title="Completed Orders"
         >
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            selectedSection === 'completed' ? "bg-white/20 text-white" : "bg-green-50 text-green-600 group-hover:bg-green-100"
-          )}>
-            <Layers size={24} />
-          </div>
-          <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'completed' ? "text-white/70" : "text-gray-500")}>
-              Completed Orders
-            </p>
-            <p className="text-2xl font-black">{completedOrdersCount}</p>
-            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'completed' ? "text-white/60" : "text-gray-400")}>
-              Delivered and closed
+          <CheckCircle size={20} />
+          {completedOrdersCount > 0 && (
+            <span className={cn(
+              "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border shadow-sm",
+              selectedSection === 'completed' ? "bg-white text-green-600 border-white" : "bg-green-600 text-white border-green-600"
+            )}>
+              {completedOrdersCount}
             </span>
-          </div>
+          )}
         </button>
       </div>
 
@@ -611,7 +634,7 @@ export default function OrderManagementDashboard({ orders, inventory = [], onUpd
         <div className="lg:col-span-1 space-y-4">
           <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
             <Layers className="text-blue-500" size={16} />
-            {selectedSection === 'total' ? 'All Managed Orders' : selectedSection === 'hold' ? 'On Hold Orders' : 'Delivered Catalog'} ({filteredOrders.length})
+            {selectedSection === 'recent' ? 'Recent Managed Orders' : selectedSection === 'hold' ? 'On Hold Orders' : selectedSection === 'process' ? 'In Process Orders' : 'Delivered Catalog'} ({filteredOrders.length})
           </h3>
           <div className="space-y-3">
             {filteredOrders.length > 0 ? (

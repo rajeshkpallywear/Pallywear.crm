@@ -40,6 +40,7 @@ interface DesignDashboardProps {
   orders: Order[];
   onUpdateOrder: (id: string, updates: Partial<Order>) => Promise<void>;
   user: any;
+  activeChannel: 'staff' | 'order_management';
 }
 
 interface ChatMessage {
@@ -51,12 +52,14 @@ interface ChatMessage {
   createdAt: number;
 }
 
-export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignDashboardProps) {
-  // Primary Tabs: 'staff' for Staff/Sales desk pipeline, 'order_management' for Backoffice pipeline
-  const [activeChannel, setActiveChannel] = useState<'staff' | 'order_management'>('staff');
-
+export default function DesignDashboard({ orders, onUpdateOrder, user, activeChannel }: DesignDashboardProps) {
   // Subsection filters: 'total', 'hold', 'completed'
   const [selectedSection, setSelectedSection] = useState<'total' | 'hold' | 'completed'>('total');
+
+  // Reset subsection filter when active channel changes
+  useEffect(() => {
+    setSelectedSection('total');
+  }, [activeChannel]);
 
   // Searching/Filtering
   const [searchTerm, setSearchTerm] = useState('');
@@ -332,6 +335,22 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
     }
   };
 
+  const handleCompleteOrderDirectly = async (orderId: string) => {
+    setIsProcessing(true);
+    try {
+      await onUpdateOrder(orderId, {
+        status: OrderStatus.ORDER_MANAGEMENT,
+        updatedAt: Date.now()
+      });
+      alert("Success: Design marked as completed and sent to Order Management.");
+    } catch (e) {
+      console.error(e);
+      alert("Failed to complete design.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleSendToOrderManagement = async () => {
     if (!selectedOrder || isProcessing) return;
 
@@ -513,141 +532,81 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      {/* Header section with synchronized database updates */}
+      {/* Header section with designer account label */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4 mb-6">
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border-none"
-            title="Reload State"
-          >
-            <RefreshCw size={14} className="animate-spin" />
-            Reload Database
-          </button>
           <div className="px-4 py-2 bg-purple-50 text-purple-700 rounded-xl border border-purple-100 italic text-xs font-bold">
             🔒 Designer Account: {designerName}
           </div>
         </div>
       </div>
 
-      {/* Primary Communication Channel Navigations */}
-      <div className="flex border-b border-gray-150 gap-4">
-        <button
-          onClick={() => {
-            setActiveChannel('staff');
-            setSelectedSection('total');
-          }}
-          className={cn(
-            "pb-4 text-sm font-black transition-all relative flex items-center gap-2 cursor-pointer border-none bg-transparent",
-            activeChannel === 'staff' ? "text-brand-primary" : "text-gray-400 hover:text-gray-700"
-          )}
-        >
-          <MessageSquare size={18} />
-          <span>1. Staff Conversation & Sales Desk</span>
-          {activeChannel === 'staff' && (
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-brand-primary rounded-t-full" />
-          )}
-        </button>
-
-        <button
-          onClick={() => {
-            setActiveChannel('order_management');
-            setSelectedSection('total');
-          }}
-          className={cn(
-            "pb-4 text-sm font-black transition-all relative flex items-center gap-2 cursor-pointer border-none bg-transparent",
-            activeChannel === 'order_management' ? "text-brand-primary" : "text-gray-400 hover:text-gray-700"
-          )}
-        >
-          <FolderOpen size={18} />
-          <span>2. Order Management Pipeline</span>
-          {activeChannel === 'order_management' && (
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-brand-primary rounded-t-full" />
-          )}
-        </button>
-      </div>
-
-      {/* Summary Columns Counters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Summary Columns Counters (Icon-only) */}
+      <div className="flex gap-4 mb-6">
         {/* Card: Total */}
         <button
           onClick={() => setSelectedSection('total')}
           className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer border-dashed",
+            "w-14 h-14 rounded-full border transition-all flex items-center justify-center relative shadow-sm cursor-pointer border-dashed outline-none",
             selectedSection === 'total'
-              ? "bg-black text-white border-black shadow-lg"
-              : "bg-white border-gray-200 hover:border-gray-400 shadow-sm"
+              ? "bg-black text-white border-black shadow-md scale-105"
+              : "bg-white border-gray-200 hover:border-gray-400"
           )}
+          title="Total / Active Designs"
         >
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            selectedSection === 'total' ? "bg-white/10 text-white" : "bg-gray-100 text-gray-700"
-          )}>
-            <Package size={24} />
-          </div>
-          <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'total' ? "text-white/70" : "text-gray-500")}>
-              Total / Active Designs
-            </p>
-            <p className="text-2xl font-black mt-0.5">{activeStats.totalCount}</p>
-            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'total' ? "text-white/60" : "text-gray-400")}>
-              Active requests needing output
+          <Package size={20} />
+          {activeStats.totalCount > 0 && (
+            <span className={cn(
+              "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border shadow-sm",
+              selectedSection === 'total' ? "bg-white text-black border-white" : "bg-black text-white border-black"
+            )}>
+              {activeStats.totalCount}
             </span>
-          </div>
+          )}
         </button>
 
         {/* Card: Hold */}
         <button
           onClick={() => setSelectedSection('hold')}
           className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer border-dashed",
+            "w-14 h-14 rounded-full border transition-all flex items-center justify-center relative shadow-sm cursor-pointer border-dashed outline-none",
             selectedSection === 'hold'
-              ? "bg-red-600 text-white border-red-600 shadow-lg"
-              : "bg-white border-gray-200 hover:border-red-400 shadow-sm"
+              ? "bg-red-600 text-white border-red-600 shadow-md scale-105"
+              : "bg-white border-gray-200 hover:border-red-400"
           )}
+          title="On Hold Designs"
         >
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            selectedSection === 'hold' ? "bg-white/10 text-white" : "bg-red-50 text-red-600"
-          )}>
-            <Clock size={24} />
-          </div>
-          <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'hold' ? "text-white/70" : "text-gray-500")}>
-              On Hold Designs
-            </p>
-            <p className="text-2xl font-black mt-0.5">{activeStats.holdCount}</p>
-            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'hold' ? "text-white/60" : "text-gray-400")}>
-              Blocked pending verification
+          <Clock size={20} />
+          {activeStats.holdCount > 0 && (
+            <span className={cn(
+              "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border shadow-sm",
+              selectedSection === 'hold' ? "bg-white text-red-600 border-white" : "bg-red-600 text-white border-red-600"
+            )}>
+              {activeStats.holdCount}
             </span>
-          </div>
+          )}
         </button>
 
         {/* Card: Completed */}
         <button
           onClick={() => setSelectedSection('completed')}
           className={cn(
-            "p-6 rounded-2xl border transition-all text-left flex items-center gap-4 group cursor-pointer border-dashed",
+            "w-14 h-14 rounded-full border transition-all flex items-center justify-center relative shadow-sm cursor-pointer border-dashed outline-none",
             selectedSection === 'completed'
-              ? "bg-green-600 text-white border-green-600 shadow-lg"
-              : "bg-white border-gray-200 hover:border-green-400 shadow-sm"
+              ? "bg-green-600 text-white border-green-600 shadow-md scale-105"
+              : "bg-white border-gray-200 hover:border-green-400"
           )}
+          title="Completed Designs"
         >
-          <div className={cn(
-            "w-12 h-12 rounded-full flex items-center justify-center shadow-inner transition-colors",
-            selectedSection === 'completed' ? "bg-white/10 text-white" : "bg-green-50 text-green-600"
-          )}>
-            <CheckCircle size={24} />
-          </div>
-          <div>
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", selectedSection === 'completed' ? "text-white/70" : "text-gray-500")}>
-              Completed Designs
-            </p>
-            <p className="text-2xl font-black mt-0.5">{activeStats.completedCount}</p>
-            <span className={cn("text-[9px] font-semibold block mt-0.5", selectedSection === 'completed' ? "text-white/60" : "text-gray-400")}>
-              Traces and machine files delivered
+          <CheckCircle size={20} />
+          {activeStats.completedCount > 0 && (
+            <span className={cn(
+              "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border shadow-sm",
+              selectedSection === 'completed' ? "bg-white text-green-600 border-white" : "bg-green-600 text-white border-green-600"
+            )}>
+              {activeStats.completedCount}
             </span>
-          </div>
+          )}
         </button>
       </div>
 
@@ -693,7 +652,11 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
                     item.assignedDesigner === '';
 
                   return (
-                    <tr key={item.id} className="hover:bg-gray-50/30 transition-colors">
+                    <tr
+                      key={item.id}
+                      onClick={() => handleOpenWorkspace(item)}
+                      className="hover:bg-gray-50/30 transition-colors cursor-pointer"
+                    >
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
                           <span className="font-mono text-xs font-black text-brand-primary">
@@ -733,26 +696,20 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
                             </span>
                           ) : (
                             <span className={cn(
-                              "px-2 py-1 rounded text-[9.5px] font-black uppercase tracking-widest border",
-                              isClaimedByMe ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-50 text-slate-600 border-slate-200"
+                               "px-2 py-1 rounded text-[9.5px] font-black uppercase tracking-widest border",
+                               isClaimedByMe ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-50 text-slate-600 border-slate-200"
                             )}>
                               {isClaimedByMe ? "🔒 Assigned to You" : `🔒 ${item.assignedDesigner}`}
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         {item.isCompleted ? (
                           <div className="flex items-center justify-end gap-2 text-xs">
-                            <span className="text-[10px] text-green-700 bg-green-50 font-black uppercase px-2 py-1 rounded-lg border border-green-200">
+                            <span className="text-[10px] text-green-700 bg-green-50 font-black uppercase px-2.5 py-1.5 rounded-lg border border-green-200">
                               Completed ✔
                             </span>
-                            <button
-                              onClick={() => handleOpenWorkspace(item)}
-                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black uppercase transition-all"
-                            >
-                              Review Assets
-                            </button>
                           </div>
                         ) : isUnclaimed ? (
                           <button
@@ -764,11 +721,11 @@ export default function DesignDashboard({ orders, onUpdateOrder, user }: DesignD
                           </button>
                         ) : isClaimedByMe ? (
                           <button
-                            onClick={() => handleOpenWorkspace(item)}
-                            className="px-4 py-2 bg-black hover:bg-gray-800 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ml-auto cursor-pointer border-none shadow-sm"
+                            disabled={isProcessing}
+                            onClick={() => handleCompleteOrderDirectly(item.id)}
+                            className="px-4 py-2 bg-green-650 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ml-auto cursor-pointer border-none shadow-sm"
                           >
-                            Open Workspace
-                            <ChevronRight size={14} />
+                            Click to Complete
                           </button>
                         ) : (
                           <span className="text-[10px] text-gray-400 font-bold uppercase italic pr-4">Claimed by partner</span>

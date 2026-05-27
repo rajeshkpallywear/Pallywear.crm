@@ -3,70 +3,167 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MessageSquare, X, Mic, Send, Paperclip, User,
   Clock, Trash2, Download, AlertCircle, Check,
   Plus, Play, Square, FileText, Image as ImageIcon, Sparkles,
-  Search, ArrowLeft, Palette, CheckSquare
+  Search, ArrowLeft, Palette, CheckSquare, Mail, Users, CheckCheck,
+  Smile, Phone, Video, Info, Lock
 } from 'lucide-react';
 import FileUpload from './FileUpload';
 import imageCompression from 'browser-image-compression';
 import ImageViewer from './ImageViewer';
 import { Order, OrderStatus, UserRole } from '../types';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, User as AuthUser } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 
-export interface Reply {
+export interface Chat {
   id: string;
+  type: 'direct' | 'group';
+  name: string; // Group name or recipient name
+  recipientEmail?: string; // Recipient email (for direct chats)
+  recipientRole?: string;
+  avatar?: string;
+  participants: string[]; // User IDs of participants
+  acceptedParticipants: string[]; // User IDs who accepted
+  createdAt: number;
+  updatedAt: number;
+  lastMessage?: string;
+  lastMessageTime?: number;
+  lastSenderName?: string;
+  unreadCount?: { [userId: string]: number };
+}
+
+export interface ChatMessage {
+  id: string;
+  chatId: string;
+  senderId: string;
   senderName: string;
   senderRole: string;
   message: string;
-  createdAt: number;
   imageAttachments?: string[];
   pdfAttachments?: string[];
+  voiceNote?: string | null;
+  createdAt: number;
+  readBy: string[]; // List of user IDs who read the message
 }
 
-export interface Conversation {
+export interface ChatInvite {
   id: string;
-  customerName: string;
-  staffName: string;
-  message: string;
-  imageAttachments: string[];
-  pdfAttachments: string[];
-  voiceNote: string | null;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+  senderEmail: string;
+  recipientEmail: string;
+  status: 'pending' | 'accepted' | 'declined';
+  chatType: 'direct' | 'group';
+  groupName?: string;
   createdAt: number;
-  replies: Reply[];
-  convertedToOrderId?: string;
-  isUrgent?: boolean;
 }
 
 interface ConversationDashboardProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: { name: string; role: string; id?: string } | null;
+  currentUser: { name: string; role: string; id: string; email?: string } | null;
   orders?: Order[];
   onUpdateOrder?: (id: string, updates: Partial<Order>) => Promise<void>;
   onCreateOrder?: (order: Partial<Order>) => Promise<void>;
   initialSelectedId?: string | null;
 }
 
-const seedConversationsIfNeeded = (): Conversation[] => {
-  const saved = localStorage.getItem('pallywear_conversations');
-  if (!saved) {
-    localStorage.setItem('pallywear_conversations', JSON.stringify([]));
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(saved);
-    if (parsed.some((c: any) => c.id === 'conv_1' || c.id === 'conv_2' || c.customerName?.includes('Priya') || c.customerName?.includes('Gaurav'))) {
-      localStorage.setItem('pallywear_conversations', JSON.stringify([]));
-      return [];
-    }
-    return parsed;
-  } catch (e) {
-    return [];
+// Initial seeder to load mock data for testing
+const seedMockChatData = (currentUserId: string, currentUserEmail: string) => {
+  const chatsKey = 'pallywear_adv_chats';
+  const msgsKey = 'pallywear_adv_messages';
+  const invitesKey = 'pallywear_adv_invites';
+
+  if (!localStorage.getItem(chatsKey)) {
+    // Seed sample invites and chats
+    const sampleChats: Chat[] = [
+      {
+        id: 'group_design_team',
+        type: 'group',
+        name: 'Embroidery Design Squad',
+        avatar: 'https://ui-avatars.com/api/?name=Embroidery+Design+Squad&background=4D109E&color=fff',
+        participants: [currentUserId, 'designer_arun', 'admin_ceo'],
+        acceptedParticipants: [currentUserId, 'designer_arun', 'admin_ceo'],
+        createdAt: Date.now() - 3600 * 1000 * 24,
+        updatedAt: Date.now() - 600 * 1000,
+        lastMessage: 'Hi everyone, please review the latest t-shirt mockup design.',
+        lastMessageTime: Date.now() - 600 * 1000,
+        lastSenderName: 'Arun (Designer)',
+        unreadCount: { [currentUserId]: 2 }
+      },
+      {
+        id: 'chat_with_ceo',
+        type: 'direct',
+        name: 'CEO Office',
+        recipientEmail: 'ceo@pallywear.com',
+        recipientRole: 'admin',
+        avatar: 'https://ui-avatars.com/api/?name=CEO+Office&background=1A0B91&color=fff',
+        participants: [currentUserId, 'admin_ceo'],
+        acceptedParticipants: [currentUserId, 'admin_ceo'],
+        createdAt: Date.now() - 3600 * 1000 * 12,
+        updatedAt: Date.now() - 1200 * 1000,
+        lastMessage: 'Let me know once the telecalling leads are distributed.',
+        lastMessageTime: Date.now() - 1200 * 1000,
+        lastSenderName: 'CEO Office',
+        unreadCount: { [currentUserId]: 0 }
+      }
+    ];
+
+    const sampleMessages: ChatMessage[] = [
+      {
+        id: 'm1',
+        chatId: 'group_design_team',
+        senderId: 'designer_arun',
+        senderName: 'Arun',
+        senderRole: 'designer',
+        message: 'Welcome to the design thread! Uploading reference drafts.',
+        createdAt: Date.now() - 3600 * 1000 * 2,
+        readBy: ['designer_arun']
+      },
+      {
+        id: 'm2',
+        chatId: 'group_design_team',
+        senderId: 'designer_arun',
+        senderName: 'Arun',
+        senderRole: 'designer',
+        message: 'Hi everyone, please review the latest t-shirt mockup design.',
+        createdAt: Date.now() - 600 * 1000,
+        readBy: ['designer_arun']
+      },
+      {
+        id: 'm3',
+        chatId: 'chat_with_ceo',
+        senderId: 'admin_ceo',
+        senderName: 'CEO',
+        senderRole: 'admin',
+        message: 'Let me know once the telecalling leads are distributed.',
+        createdAt: Date.now() - 1200 * 1000,
+        readBy: [currentUserId, 'admin_ceo']
+      }
+    ];
+
+    const sampleInvites: ChatInvite[] = [
+      {
+        id: 'invite_1',
+        chatId: 'chat_pending_invite',
+        senderId: 'marketing_manager',
+        senderName: 'Marketing Desk',
+        senderEmail: 'marketing@pallywear.com',
+        recipientEmail: currentUserEmail || 'daniel@pallywear.com',
+        status: 'pending',
+        chatType: 'direct',
+        createdAt: Date.now() - 1800 * 1000
+      }
+    ];
+
+    localStorage.setItem(chatsKey, JSON.stringify(sampleChats));
+    localStorage.setItem(msgsKey, JSON.stringify(sampleMessages));
+    localStorage.setItem(invitesKey, JSON.stringify(sampleInvites));
   }
 };
 
@@ -80,149 +177,403 @@ export default function ConversationDashboard({
   initialSelectedId = null
 }: ConversationDashboardProps) {
   const { registeredUsers } = useAuth();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [selectedDMUserId, setSelectedDMUserId] = useState<string | null>(null);
+  
+  // Local Database States
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [invites, setInvites] = useState<ChatInvite[]>([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // UI Selection States
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'groups' | 'invites'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [dmsRefreshTrigger, setDmsRefreshTrigger] = useState(0);
+  
+  // Modals
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  
+  // Form States
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [groupName, setGroupName] = useState('');
+  const [selectedGroupParticipants, setSelectedGroupParticipants] = useState<string[]>([]);
+  const [inviteGroupEmails, setInviteGroupEmails] = useState('');
+  const [isSendingAction, setIsSendingAction] = useState(false);
 
-  // Sync selection with initialSelectedId
+  // Chat message input states
+  const [messageText, setMessageText] = useState('');
+  const [attachments, setAttachments] = useState<{ name: string; type: string; data: string }[]>([]);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [viewImage, setViewImage] = useState<string | null>(null);
+  
+  // Voice Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const [voiceNoteBase64, setVoiceNoteBase64] = useState<string | null>(null);
+
+  // Scroll anchor
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  const currentUserId = currentUser?.id || 'system_user';
+  const currentUserEmail = currentUser?.email || '';
+  const currentUserName = currentUser?.name || 'User';
+
+  // Seed initial data once logged in
   useEffect(() => {
-    if (isOpen && initialSelectedId) {
-      // Check if it is a registered user ID or an order ID
-      const isUser = registeredUsers.some(u => u.id === initialSelectedId);
-      if (isUser) {
-        setSelectedDMUserId(initialSelectedId);
-        setSelectedOrderId(null);
-      } else {
-        setSelectedOrderId(initialSelectedId);
-        setSelectedDMUserId(null);
-      }
+    if (isOpen && currentUserId) {
+      seedMockChatData(currentUserId, currentUserEmail);
+      loadLocalData();
     }
-  }, [isOpen, initialSelectedId, registeredUsers]);
+  }, [isOpen, currentUserId, refreshTrigger]);
 
-  // Load consultations
+  // Read receipts and scroll to bottom
   useEffect(() => {
-    if (isOpen) {
-      setConversations(seedConversationsIfNeeded());
+    if (selectedChatId) {
+      markChatAsRead(selectedChatId);
+      setTimeout(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
     }
-  }, [isOpen]);
+  }, [selectedChatId, messages]);
 
-  // Sync DMs across tabs
+  // Real-time synchronization between browser tabs
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key && e.key.startsWith('pallywear_dms_')) {
-        setDmsRefreshTrigger(prev => prev + 1);
+      if (
+        e.key === 'pallywear_adv_chats' ||
+        e.key === 'pallywear_adv_messages' ||
+        e.key === 'pallywear_adv_invites'
+      ) {
+        loadLocalData();
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const saveToStorage = (updatedConv: Conversation[]) => {
-    localStorage.setItem('pallywear_conversations', JSON.stringify(updatedConv));
-    setConversations(updatedConv);
+  const loadLocalData = () => {
+    const chatsData = localStorage.getItem('pallywear_adv_chats');
+    const msgsData = localStorage.getItem('pallywear_adv_messages');
+    const invitesData = localStorage.getItem('pallywear_adv_invites');
+
+    setChats(chatsData ? JSON.parse(chatsData) : []);
+    setMessages(msgsData ? JSON.parse(msgsData) : []);
+    setInvites(invitesData ? JSON.parse(invitesData) : []);
   };
 
-  // Direct Messaging localStorage helpers
-  const currentUserId = currentUser?.id || 'system_user';
-  
-  const getDMKey = (uid1: string, uid2: string) => {
-    return [uid1, uid2].sort().join('_');
+  const saveData = (updatedChats: Chat[], updatedMsgs: ChatMessage[], updatedInvites: ChatInvite[]) => {
+    localStorage.setItem('pallywear_adv_chats', JSON.stringify(updatedChats));
+    localStorage.setItem('pallywear_adv_messages', JSON.stringify(updatedMsgs));
+    localStorage.setItem('pallywear_adv_invites', JSON.stringify(updatedInvites));
+    setChats(updatedChats);
+    setMessages(updatedMsgs);
+    setInvites(updatedInvites);
   };
 
-  const loadDMMessages = (uid1: string, uid2: string): Reply[] => {
-    const key = `pallywear_dms_${getDMKey(uid1, uid2)}`;
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : [];
-  };
+  // Mark chat messages as read
+  const markChatAsRead = (chatId: string) => {
+    const chatsData = localStorage.getItem('pallywear_adv_chats');
+    const msgsData = localStorage.getItem('pallywear_adv_messages');
+    if (!chatsData || !msgsData) return;
 
-  const saveDMMessages = (uid1: string, uid2: string, msgs: Reply[]) => {
-    const key = `pallywear_dms_${getDMKey(uid1, uid2)}`;
-    localStorage.setItem(key, JSON.stringify(msgs));
-  };
+    const localChats: Chat[] = JSON.parse(chatsData);
+    const localMsgs: ChatMessage[] = JSON.parse(msgsData);
 
-  // Order Conversion state
-  const [isConvertingToOrder, setIsConvertingToOrder] = useState(false);
-  const [convPhone, setConvPhone] = useState('');
-  const [convAddress, setConvAddress] = useState('');
-  const [convCategory, setConvCategory] = useState('Art Consult');
-  const [convPrintType, setConvPrintType] = useState('Custom Graphic Request');
-  const [convModel, setConvModel] = useState('Standard T-Shirt');
-  const [convMaterial, setConvMaterial] = useState('Cotton Fleece 320 GSM');
-  const [convQty, setConvQty] = useState(50);
-  const [convTotalAmount, setConvTotalAmount] = useState(1000);
-  const [convAdvancePay, setConvAdvancePay] = useState(500);
-  const [convIsUrgent, setConvIsUrgent] = useState(false);
-  const [selectedDesignerImages, setSelectedDesignerImages] = useState<string[]>([]);
+    let hasUpdates = false;
 
-  // Recording State
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const [voiceNoteBase64, setVoiceNoteBase64] = useState<string | null>(null);
+    // Update unread count for current user
+    const updatedChats = localChats.map(c => {
+      if (c.id === chatId && c.unreadCount && c.unreadCount[currentUserId] > 0) {
+        hasUpdates = true;
+        return {
+          ...c,
+          unreadCount: {
+            ...c.unreadCount,
+            [currentUserId]: 0
+          }
+        };
+      }
+      return c;
+    });
 
-  // New Consult Form State
-  const [isCreatingConsult, setIsCreatingConsult] = useState(false);
-  const [consultCustomerName, setConsultCustomerName] = useState('');
-  const [consultDescription, setConsultDescription] = useState('');
-  const [consultImageAttachments, setConsultImageAttachments] = useState<string[]>([]);
-  const [isConsultCompressing, setIsConsultCompressing] = useState(false);
+    // Add user ID to readBy array for messages
+    const updatedMsgs = localMsgs.map(m => {
+      if (m.chatId === chatId && !m.readBy.includes(currentUserId)) {
+        hasUpdates = true;
+        return {
+          ...m,
+          readBy: [...m.readBy, currentUserId]
+        };
+      }
+      return m;
+    });
 
-  const [consultVoiceNote, setConsultVoiceNote] = useState<string | null>(null);
-  const [isConsultRecording, setIsConsultRecording] = useState(false);
-  const consultMediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const consultAudioChunksRef = useRef<Blob[]>([]);
-
-  const handleDownloadImage = (imgSrc: string, fileName: string) => {
-    try {
-      const link = document.createElement('a');
-      link.href = imgSrc;
-      link.download = fileName || 'pallywear_artwork_file.png';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (e) {
-      console.error('Download failed', e);
-      alert('Failed to trigger download automatically.');
+    if (hasUpdates) {
+      localStorage.setItem('pallywear_adv_chats', JSON.stringify(updatedChats));
+      localStorage.setItem('pallywear_adv_messages', JSON.stringify(updatedMsgs));
+      setChats(updatedChats);
+      setMessages(updatedMsgs);
     }
   };
 
-  // Reply text state mapped by Conversation ID or DM user ID
-  const [replyInput, setReplyInput] = useState<{ [convId: string]: string }>({});
+  // Filter list
+  const filteredChats = useMemo(() => {
+    return chats
+      .filter(chat => {
+        // Must be a participant
+        if (!chat.participants.includes(currentUserId)) return false;
+        
+        // Tab filters
+        if (activeTab === 'unread') {
+          return chat.unreadCount && chat.unreadCount[currentUserId] > 0;
+        }
+        if (activeTab === 'groups') {
+          return chat.type === 'group';
+        }
+        return true;
+      })
+      .filter(chat => {
+        // Search filter
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return true;
+        return (
+          chat.name.toLowerCase().includes(q) ||
+          (chat.lastMessage && chat.lastMessage.toLowerCase().includes(q))
+        );
+      });
+  }, [chats, activeTab, searchQuery, currentUserId]);
 
-  // Attachments state mapped by Conversation ID or DM user ID
-  const [replyAttachments, setReplyAttachments] = useState<{ [convId: string]: { name: string, type: string, data: string }[] }>({});
-  const [isReplyCompressing, setIsReplyCompressing] = useState<{ [convId: string]: boolean }>({});
-  const [viewImage, setViewImage] = useState<string | null>(null);
+  const pendingInvites = useMemo(() => {
+    return invites.filter(inv => {
+      // Received invites for current user
+      const isReceived = inv.recipientEmail.toLowerCase().trim() === currentUserEmail.toLowerCase().trim();
+      // Sent invites by current user
+      const isSent = inv.senderId === currentUserId;
+      return (isReceived || isSent) && inv.status === 'pending';
+    });
+  }, [invites, currentUserEmail, currentUserId]);
 
-  const handleReplyFileChange = async (convId: string, e: any) => {
+  const activeChat = useMemo(() => {
+    return chats.find(c => c.id === selectedChatId) || null;
+  }, [chats, selectedChatId]);
+
+  const activeChatMessages = useMemo(() => {
+    if (!selectedChatId) return [];
+    return messages
+      .filter(m => m.chatId === selectedChatId)
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }, [messages, selectedChatId]);
+
+  // Send Direct/Group Invite
+  const handleSendInvite = (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetEmail = inviteEmail.toLowerCase().trim();
+    if (!targetEmail) return;
+
+    if (targetEmail === currentUserEmail.toLowerCase().trim()) {
+      alert("You cannot invite yourself.");
+      return;
+    }
+
+    setIsSendingAction(true);
+
+    // Find recipient details in registered list
+    const recipientUser = registeredUsers.find(u => u.email.toLowerCase().trim() === targetEmail);
+
+    const chatId = `chat_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    const inviteId = `invite_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
+    // 1. Create a pending chat
+    const newChat: Chat = {
+      id: chatId,
+      type: 'direct',
+      name: recipientUser?.name || targetEmail.split('@')[0],
+      recipientEmail: targetEmail,
+      recipientRole: recipientUser?.role || 'user',
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(recipientUser?.name || targetEmail)}&background=1A0B91&color=fff`,
+      participants: [currentUserId, recipientUser?.id || 'pending_user_id'].filter(id => id !== 'pending_user_id'),
+      acceptedParticipants: [currentUserId], // only sender has accepted
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      lastMessage: 'Waiting for invitation acceptance...',
+      lastMessageTime: Date.now(),
+      lastSenderName: currentUserName,
+      unreadCount: {}
+    };
+
+    // 2. Create the invite log
+    const newInvite: ChatInvite = {
+      id: inviteId,
+      chatId: chatId,
+      senderId: currentUserId,
+      senderName: currentUserName,
+      senderEmail: currentUserEmail,
+      recipientEmail: targetEmail,
+      status: 'pending',
+      chatType: 'direct',
+      createdAt: Date.now()
+    };
+
+    const updatedChats = [...chats, newChat];
+    const updatedInvites = [...invites, newInvite];
+
+    saveData(updatedChats, messages, updatedInvites);
+
+    setInviteEmail('');
+    setShowInviteModal(false);
+    setIsSendingAction(false);
+    alert(`Invitation sent to ${targetEmail}! Conversation will unlock once they accept.`);
+  };
+
+  // Accept Invite
+  const handleAcceptInvite = (invite: ChatInvite) => {
+    const updatedInvites = invites.map(inv => {
+      if (inv.id === invite.id) return { ...inv, status: 'accepted' as const };
+      return inv;
+    });
+
+    const updatedChats = chats.map(chat => {
+      if (chat.id === invite.chatId) {
+        // Ensure recipient ID is appended if they register/log in now
+        const currentParticipants = [...chat.participants];
+        if (!currentParticipants.includes(currentUserId)) {
+          currentParticipants.push(currentUserId);
+        }
+        return {
+          ...chat,
+          participants: currentParticipants,
+          acceptedParticipants: [...chat.acceptedParticipants, currentUserId],
+          lastMessage: `${currentUserName} accepted the invitation. Chat unlocked!`,
+          lastMessageTime: Date.now()
+        };
+      }
+      return chat;
+    });
+
+    // Add first system welcome message
+    const welcomeMsg: ChatMessage = {
+      id: `system_${Date.now()}`,
+      chatId: invite.chatId,
+      senderId: 'system',
+      senderName: 'System',
+      senderRole: 'system',
+      message: `${currentUserName} joined the conversation. You can now chat!`,
+      createdAt: Date.now(),
+      readBy: [currentUserId]
+    };
+
+    const updatedMsgs = [...messages, welcomeMsg];
+
+    saveData(updatedChats, updatedMsgs, updatedInvites);
+    setSelectedChatId(invite.chatId);
+    setActiveTab('all');
+  };
+
+  // Decline Invite
+  const handleDeclineInvite = (invite: ChatInvite) => {
+    const updatedInvites = invites.map(inv => {
+      if (inv.id === invite.id) return { ...inv, status: 'declined' as const };
+      return inv;
+    });
+
+    const updatedChats = chats.filter(chat => chat.id !== invite.chatId);
+
+    saveData(updatedChats, messages, updatedInvites);
+  };
+
+  // Create Group Chat
+  const handleCreateGroup = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!groupName.trim()) return;
+
+    setIsSendingAction(true);
+    const chatId = `group_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
+    // Get selected users and emails
+    const emailsToInvite = inviteGroupEmails
+      .toLowerCase()
+      .split(',')
+      .map(email => email.trim())
+      .filter(Boolean);
+
+    const groupParticipants = [currentUserId, ...selectedGroupParticipants];
+    const groupAccepted = [currentUserId]; // Only creator starts as accepted
+
+    // Send invites for emails
+    const newInvites: ChatInvite[] = emailsToInvite.map(email => ({
+      id: `invite_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+      chatId: chatId,
+      senderId: currentUserId,
+      senderName: currentUserName,
+      senderEmail: currentUserEmail,
+      recipientEmail: email,
+      status: 'pending',
+      chatType: 'group',
+      groupName: groupName.trim(),
+      createdAt: Date.now()
+    }));
+
+    const newChat: Chat = {
+      id: chatId,
+      type: 'group',
+      name: groupName.trim(),
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName.trim())}&background=4D109E&color=fff`,
+      participants: groupParticipants,
+      acceptedParticipants: groupAccepted,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      lastMessage: `Group "${groupName.trim()}" created. Inviting participants...`,
+      lastMessageTime: Date.now(),
+      lastSenderName: currentUserName,
+      unreadCount: {}
+    };
+
+    const welcomeMsg: ChatMessage = {
+      id: `system_${Date.now()}`,
+      chatId: chatId,
+      senderId: 'system',
+      senderName: 'System',
+      senderRole: 'system',
+      message: `${currentUserName} created group "${groupName.trim()}".`,
+      createdAt: Date.now(),
+      readBy: [currentUserId]
+    };
+
+    const updatedChats = [...chats, newChat];
+    const updatedMsgs = [...messages, welcomeMsg];
+    const updatedInvites = [...invites, ...newInvites];
+
+    saveData(updatedChats, updatedMsgs, updatedInvites);
+
+    setGroupName('');
+    setSelectedGroupParticipants([]);
+    setInviteGroupEmails('');
+    setShowGroupModal(false);
+    setIsSendingAction(false);
+    setSelectedChatId(chatId);
+    setActiveTab('all');
+  };
+
+  // Image upload compression
+  const handleFileChange = async (e: any) => {
     const files = e.target.files;
     if (!files) return;
 
-    setIsReplyCompressing(prev => ({ ...prev, [convId]: true }));
+    setIsCompressing(true);
     const fileList = Array.from(files) as File[];
-    const processed: { name: string, type: string, data: string }[] = [];
+    const processed: { name: string; type: string; data: string }[] = [];
 
     for (const file of fileList) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert(`File ${file.name} is too large. Max size is 10MB.`);
-        continue;
-      }
       try {
         let fileToProcess: File | Blob = file;
         if (file.type.startsWith('image/')) {
           const options = {
-            maxSizeMB: 0.1, // around 100KB target size
+            maxSizeMB: 0.1, // compress to ~100KB
             maxWidthOrHeight: 1280,
             useWebWorker: true,
           };
-          try {
-            fileToProcess = await imageCompression(file, options);
-          } catch (err) {
-            console.error('Image compression failed for reply', err);
-          }
+          fileToProcess = await imageCompression(file, options);
         }
 
         const reader = new FileReader();
@@ -237,115 +588,66 @@ export default function ConversationDashboard({
           data: data
         });
       } catch (err) {
-        console.error('Error loading file for reply:', err);
+        console.error('File compression error:', err);
       }
     }
 
-    setReplyAttachments(prev => {
-      const current = prev[convId] || [];
-      return {
-        ...prev,
-        [convId]: [...current, ...processed].slice(-4) // limit to max 4 files
-      };
-    });
-    setIsReplyCompressing(prev => ({ ...prev, [convId]: false }));
+    setAttachments(prev => [...prev, ...processed].slice(-4));
+    setIsCompressing(false);
     if (e.target) e.target.value = '';
   };
 
+  // Voice recording mock
   const generateSimulatedVoiceBlob = (): Blob => {
     const sampleRate = 8000;
-    const duration = 2.5;
+    const duration = 2.0;
     const numSamples = sampleRate * duration;
     const buffer = new Uint8Array(44 + numSamples);
-
-    const writeString = (offset: number, str: string) => {
-      for (let i = 0; i < str.length; i++) {
-        buffer[offset + i] = str.charCodeAt(i);
-      }
-    };
-
-    const writeUint32 = (offset: number, num: number) => {
-      buffer[offset] = num & 0xff;
-      buffer[offset + 1] = (num >> 8) & 0xff;
-      buffer[offset + 2] = (num >> 16) & 0xff;
-      buffer[offset + 3] = (num >> 24) & 0xff;
-    };
-
-    const writeUint16 = (offset: number, num: number) => {
-      buffer[offset] = num & 0xff;
-      buffer[offset + 1] = (num >> 8) & 0xff;
-    };
-
-    writeString(0, 'RIFF');
-    writeUint32(4, 36 + numSamples);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    writeUint32(16, 16);
-    writeUint16(20, 1);
-    writeUint16(22, 1);
-    writeUint32(24, sampleRate);
-    writeUint32(28, sampleRate);
-    writeUint16(32, 1);
-    writeUint16(34, 8);
-    writeString(36, 'data');
-    writeUint32(40, numSamples);
-
-    for (let i = 0; i < numSamples; i++) {
-      const t = i / sampleRate;
-      const frequency = 220 + Math.sin(2 * Math.PI * 4 * t) * 60;
-      const wave = Math.sin(2 * Math.PI * frequency * t) * 0.3 + Math.sin(2 * Math.PI * 2 * frequency * t) * 0.15;
-      const byteVal = Math.floor((wave + 0.5) * 127.5);
-      buffer[44 + i] = Math.max(0, Math.min(255, byteVal));
-    }
-
+    buffer.set([0x52, 0x49, 0x46, 0x46]); // "RIFF"
     return new Blob([buffer], { type: 'audio/wav' });
   };
 
   const startRecording = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      loadSimulatedVoiceNote();
+      loadSimulatedVoice();
       return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
 
-      mediaRecorder.onstop = () => {
+      recorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const reader = new FileReader();
         reader.onloadend = () => {
           setVoiceNoteBase64(reader.result as string);
         };
         reader.readAsDataURL(audioBlob);
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach(t => t.stop());
       };
 
-      mediaRecorder.start();
+      recorder.start();
       setIsRecording(true);
-    } catch (err: any) {
-      loadSimulatedVoiceNote();
+    } catch (err) {
+      loadSimulatedVoice();
     }
   };
 
-  const loadSimulatedVoiceNote = () => {
-    try {
-      const testBlob = generateSimulatedVoiceBlob();
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setVoiceNoteBase64(reader.result as string);
-      };
-      reader.readAsDataURL(testBlob);
-    } catch (e) {
-      console.error(e);
-    }
+  const loadSimulatedVoice = () => {
+    const blob = generateSimulatedVoiceBlob();
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setVoiceNoteBase64(reader.result as string);
+    };
+    reader.readAsDataURL(blob);
+    setIsRecording(true);
+    setTimeout(() => setIsRecording(false), 1500);
   };
 
   const stopRecording = () => {
@@ -355,590 +657,74 @@ export default function ConversationDashboard({
     }
   };
 
-  const handleTakeArt = async (orderId: string) => {
-    if (!onUpdateOrder) return;
-    setIsProcessing(true);
-    const designerName = currentUser?.name || 'Arun (Designer)';
-    try {
-      await onUpdateOrder(orderId, {
-        assignedDesigner: designerName,
-        updatedAt: Date.now()
-      });
-      alert(`Success: Artwork claimed! Only you can view or finish this art design now.`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to claim artwork.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  // Send Message
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedChatId) return;
 
-  // Reply handlers
-  const handleSendReply = (convId: string) => {
-    const text = replyInput[convId] || '';
-    const attachments = replyAttachments[convId] || [];
+    const trimmed = messageText.trim();
+    if (!trimmed && attachments.length === 0 && !voiceNoteBase64) return;
 
-    if (!text.trim() && attachments.length === 0 && !voiceNoteBase64) return;
+    const msgId = `msg_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    const images = attachments.filter(a => a.type.startsWith('image/')).map(a => a.data);
+    const pdfs = attachments.filter(a => !a.type.startsWith('image/')).map(a => a.data);
 
-    const sender = currentUser?.name ? `${currentUser.name} (${currentUser.role})` : 'System User';
-    const images: string[] = [];
-    const pdfs: string[] = [];
-
-    attachments.forEach((att) => {
-      if (att.type.startsWith('image/') || att.data.startsWith('data:image')) {
-        images.push(att.data);
-      } else {
-        pdfs.push(att.data);
-      }
-    });
-
-    const activeConv = conversations.find(c => c.id === convId);
-    let updated: Conversation[];
-
-    if (!activeConv) {
-      const orderMatch = orders.find(o => o.id === convId);
-      const newConv: Conversation = {
-        id: convId,
-        customerName: orderMatch?.customerInfo.name || 'Client',
-        staffName: orderMatch?.assignedDesigner || 'Unassigned',
-        message: orderMatch?.notes || 'Artwork Specs Chat',
-        imageAttachments: [],
-        pdfAttachments: [],
-        voiceNote: voiceNoteBase64,
-        createdAt: Date.now(),
-        replies: [{
-          id: `rep_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-          senderName: sender,
-          senderRole: currentUser?.role || 'user',
-          message: text.trim(),
-          createdAt: Date.now(),
-          imageAttachments: images.length > 0 ? images : undefined,
-          pdfAttachments: pdfs.length > 0 ? pdfs : undefined
-        }]
-      };
-      updated = [newConv, ...conversations];
-    } else {
-      updated = conversations.map((c) => {
-        if (c.id === convId) {
-          const newReply: Reply = {
-            id: `rep_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-            senderName: sender,
-            senderRole: currentUser?.role || 'user',
-            message: text.trim(),
-            createdAt: Date.now(),
-            imageAttachments: images.length > 0 ? images : undefined,
-            pdfAttachments: pdfs.length > 0 ? pdfs : undefined
-          };
-          return {
-            ...c,
-            replies: [...c.replies, newReply]
-          };
-        }
-        return c;
-      });
-    }
-
-    saveToStorage(updated);
-    setReplyInput(prev => ({ ...prev, [convId]: '' }));
-    setReplyAttachments(prev => ({ ...prev, [convId]: [] }));
-    setVoiceNoteBase64(null);
-  };
-
-  // Direct Message Sending
-  const handleSendDM = () => {
-    if (!selectedDMUserId) return;
-    const text = replyInput[selectedDMUserId] || '';
-    const attachments = replyAttachments[selectedDMUserId] || [];
-
-    if (!text.trim() && attachments.length === 0 && !voiceNoteBase64) return;
-
-    const messages = loadDMMessages(currentUserId, selectedDMUserId);
-    const images: string[] = [];
-    const pdfs: string[] = [];
-
-    attachments.forEach((att) => {
-      if (att.type.startsWith('image/') || att.data.startsWith('data:image')) {
-        images.push(att.data);
-      } else {
-        pdfs.push(att.data);
-      }
-    });
-
-    const newReply: Reply = {
-      id: `dm_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-      senderName: currentUser?.name || 'User',
+    const newMsg: ChatMessage = {
+      id: msgId,
+      chatId: selectedChatId,
+      senderId: currentUserId,
+      senderName: currentUserName,
       senderRole: currentUser?.role || 'user',
-      message: text.trim(),
-      createdAt: Date.now(),
+      message: trimmed,
       imageAttachments: images.length > 0 ? images : undefined,
-      pdfAttachments: pdfs.length > 0 ? pdfs : undefined
+      pdfAttachments: pdfs.length > 0 ? pdfs : undefined,
+      voiceNote: voiceNoteBase64,
+      createdAt: Date.now(),
+      readBy: [currentUserId]
     };
 
-    const updated = [...messages, newReply];
-    saveDMMessages(currentUserId, selectedDMUserId, updated);
+    // Update Chats database
+    const updatedChats = chats.map(c => {
+      if (c.id === selectedChatId) {
+        // Increment unread count for other participants
+        const nextUnread = { ...(c.unreadCount || {}) };
+        c.participants.forEach(pId => {
+          if (pId !== currentUserId) {
+            nextUnread[pId] = (nextUnread[pId] || 0) + 1;
+          }
+        });
 
-    setDmsRefreshTrigger(prev => prev + 1);
-    setReplyInput(prev => ({ ...prev, [selectedDMUserId]: '' }));
-    setReplyAttachments(prev => ({ ...prev, [selectedDMUserId]: [] }));
+        return {
+          ...c,
+          lastMessage: trimmed || (images.length > 0 ? '📷 Image attachment' : '🎤 Voice note'),
+          lastMessageTime: Date.now(),
+          lastSenderName: currentUserName,
+          unreadCount: nextUnread,
+          updatedAt: Date.now()
+        };
+      }
+      return c;
+    });
+
+    const updatedMsgs = [...messages, newMsg];
+    saveData(updatedChats, updatedMsgs, invites);
+
+    // Reset inputs
+    setMessageText('');
+    setAttachments([]);
     setVoiceNoteBase64(null);
   };
 
-  const handleFinishAndSendToStaff = async (orderId: string) => {
-    if (!onUpdateOrder) return;
-    const orderMatch = orders.find(o => o.id === orderId);
-    if (!orderMatch) return;
+  // Check if current user has accepted the chat
+  const hasAcceptedChat = activeChat ? activeChat.acceptedParticipants.includes(currentUserId) : false;
 
-    setIsProcessing(true);
-    try {
-      const activeConv = conversations.find(c => c.id === orderId);
-      const outputImages: string[] = [];
-      const outputPdfs: string[] = [];
-
-      if (activeConv) {
-        activeConv.replies.forEach(r => {
-          if (r.imageAttachments) outputImages.push(...r.imageAttachments);
-          if (r.pdfAttachments) outputPdfs.push(...r.pdfAttachments);
-        });
-      }
-
-      await onUpdateOrder(orderId, {
-        status: OrderStatus.ACCOUNTS,
-        designAttachments: outputImages.length > 0 ? outputImages : (orderMatch.designAttachments || []),
-        machineFiles: outputPdfs.length > 0 ? outputPdfs : (orderMatch.machineFiles || []),
-        updatedAt: Date.now()
-      });
-
-      setSelectedOrderId(null);
-      alert('Success: Artwork finished and sent to Staff/Accounts.');
-    } catch (err) {
-      console.error(err);
-      alert('An error occurred.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const startConsultRecording = async () => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      loadSimulatedConsultVoiceNote();
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      consultMediaRecorderRef.current = mediaRecorder;
-      consultAudioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          consultAudioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(consultAudioChunksRef.current, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setConsultVoiceNote(reader.result as string);
-        };
-        reader.readAsDataURL(audioBlob);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsConsultRecording(true);
-    } catch (err) {
-      loadSimulatedConsultVoiceNote();
-    }
-  };
-
-  const loadSimulatedConsultVoiceNote = () => {
-    try {
-      const testBlob = generateSimulatedVoiceBlob();
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setConsultVoiceNote(reader.result as string);
-      };
-      reader.readAsDataURL(testBlob);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const stopConsultRecording = () => {
-    if (consultMediaRecorderRef.current && isConsultRecording) {
-      consultMediaRecorderRef.current.stop();
-      setIsConsultRecording(false);
-    }
-  };
-
-  const handleConsultImageChange = async (e: any) => {
-    const files = e.target.files;
-    if (!files) return;
-
-    setIsConsultCompressing(true);
-    const fileList = Array.from(files) as File[];
-    const processed: string[] = [];
-
-    for (const file of fileList) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert(`File ${file.name} is too large. Max size is 10MB.`);
-        continue;
-      }
-      try {
-        let fileToProcess: File | Blob = file;
-        if (file.type.startsWith('image/')) {
-          const options = {
-            maxSizeMB: 0.1,
-            maxWidthOrHeight: 1280,
-            useWebWorker: true,
-          };
-          try {
-            fileToProcess = await imageCompression(file, options);
-          } catch (err) {
-            console.error('Image compression failed', err);
-          }
-        }
-
-        const reader = new FileReader();
-        const data = await new Promise<string>((resolve) => {
-          reader.onload = (event) => resolve(event.target?.result as string);
-          reader.readAsDataURL(fileToProcess);
-        });
-
-        processed.push(data);
-      } catch (err) {
-        console.error('Error loading file:', err);
-      }
-    }
-
-    setConsultImageAttachments(prev => [...prev, ...processed].slice(-4));
-    setIsConsultCompressing(false);
-  };
-
-  const handleCreateConsultation = async () => {
-    if (!consultCustomerName.trim()) {
-      alert("Please provide a Customer Name.");
-      return;
-    }
-
-    setIsProcessing(true);
-    const conversationId = `CONV_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-
-    try {
-      const saved = localStorage.getItem('pallywear_conversations') || '[]';
-      let currentConvs: Conversation[] = [];
-      try {
-        currentConvs = JSON.parse(saved);
-      } catch (e) {
-        currentConvs = [];
-      }
-
-      const initialMessage = consultDescription.trim() || 'Started a custom design consultation.';
-      const newConv: Conversation = {
-        id: conversationId,
-        customerName: consultCustomerName.trim(),
-        staffName: 'Unassigned',
-        message: initialMessage,
-        imageAttachments: consultImageAttachments,
-        pdfAttachments: [],
-        voiceNote: consultVoiceNote,
-        createdAt: Date.now(),
-        replies: []
-      };
-
-      const updatedConvs = [newConv, ...currentConvs];
-      saveToStorage(updatedConvs);
-
-      // Reset
-      setIsCreatingConsult(false);
-      setConsultCustomerName('');
-      setConsultDescription('');
-      setConsultImageAttachments([]);
-      setConsultVoiceNote(null);
-
-      setSelectedOrderId(conversationId);
-      alert(`Success: Consultation conversation started for ${consultCustomerName.trim()}!`);
-    } catch (err: any) {
-      console.error(err);
-      alert('Failed to start design consultation.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const startOrderConversionFlow = () => {
-    if (!selectedFeedItem) return;
-    setConvPhone('');
-    setConvAddress('Consultation Request Address');
-    setConvCategory('Art Consult');
-    setConvPrintType('Custom Graphic Request');
-    setConvModel('Standard T-Shirt');
-    setConvMaterial('Cotton Fleece 320 GSM');
-    setConvQty(50);
-    setConvTotalAmount(1000);
-    setConvAdvancePay(500);
-    setConvIsUrgent(selectedFeedItem.isUrgent || false);
-
-    const designerReplyImages: string[] = [];
-    if (activeChatConv?.replies) {
-      activeChatConv.replies.forEach(r => {
-        if (r.senderRole === 'designer' && r.imageAttachments) {
-          designerReplyImages.push(...r.imageAttachments);
-        }
-      });
-    }
-    if (selectedDesignerImages.length === 0 && designerReplyImages.length > 0) {
-      setSelectedDesignerImages([designerReplyImages[designerReplyImages.length - 1]]);
-    }
-
-    setIsConvertingToOrder(true);
-  };
-
-  const handleConfirmOrderConversion = async () => {
-    if (!selectedFeedItem) return;
-    if (!onCreateOrder) {
-      alert("Error: Create order callback is unavailable on this view.");
-      return;
-    }
-
-    setIsProcessing(true);
-    const newOrderId = `ORD_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-    const originalImages = selectedFeedItem.imageAttachments || [];
-    const chosenImages = selectedDesignerImages.length > 0 ? selectedDesignerImages : originalImages;
-
-    const orderData: Partial<Order> = {
-      id: newOrderId,
-      customerInfo: {
-        name: selectedFeedItem.customerName,
-        phone: convPhone.trim() || 'Not specified',
-        address: convAddress.trim() || 'No address provided'
-      },
-      category: convCategory,
-      quantity: Number(convQty) || 1,
-      details: {
-        printType: convPrintType,
-        model: convModel,
-        material: convMaterial,
-        isConsultation: false,
-        sourceConversationId: selectedFeedItem.id
-      },
-      sizeBreakdown: [
-        { category: convCategory, size: 'M', quantity: Math.floor(Number(convQty) * 0.4), price: Math.floor(Number(convTotalAmount) / (Number(convQty) || 1)) },
-        { category: convCategory, size: 'L', quantity: Math.ceil(Number(convQty) * 0.6), price: Math.floor(Number(convTotalAmount) / (Number(convQty) || 1)) }
-      ],
-      financials: {
-        totalAmount: Number(convTotalAmount) || 0,
-        advancePay: Number(convAdvancePay) || 0,
-        balanceAmount: (Number(convTotalAmount) || 0) - (Number(convAdvancePay) || 0)
-      },
-      status: OrderStatus.DESIGN,
-      assignedDesigner: selectedFeedItem.assignedDesigner && selectedFeedItem.assignedDesigner !== 'Unassigned'
-        ? selectedFeedItem.assignedDesigner
-        : 'Designer assigned',
-      isUrgent: convIsUrgent,
-      notes: `Order created from Consultation. Original description: ${selectedFeedItem.message}`,
-      staffImages: originalImages,
-      staffPdfs: [],
-      staffAttachments: originalImages,
-      designAttachments: chosenImages,
-      accountsAttachments: [],
-      orderManagementAttachments: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-
-    try {
-      await onCreateOrder(orderData);
-
-      const saved = localStorage.getItem('pallywear_conversations') || '[]';
-      let currentConvs: Conversation[] = [];
-      try {
-        currentConvs = JSON.parse(saved);
-      } catch (e) {
-        currentConvs = [];
-      }
-
-      const updatedConvs = currentConvs.map(c => {
-        if (c.id === selectedFeedItem.id) {
-          return {
-            ...c,
-            id: newOrderId,
-            convertedToOrderId: newOrderId
-          };
-        }
-        return c;
-      });
-
-      localStorage.setItem('pallywear_conversations', JSON.stringify(updatedConvs));
-      setConversations(updatedConvs);
-
-      setIsConvertingToOrder(false);
-      setSelectedOrderId(newOrderId);
-      alert(`Success: Formal order #${newOrderId} created successfully!`);
-    } catch (err: any) {
-      console.error(err);
-      alert('Failed to convert conversation.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  // Retrieve active pending invite for active chat
+  const activeChatInvite = useMemo(() => {
+    if (!activeChat) return null;
+    return invites.find(inv => inv.chatId === activeChat.id && inv.status === 'pending');
+  }, [invites, activeChat]);
 
   if (!isOpen) return null;
-
-  const isDesigner = currentUser?.role && ['designer', 'DESIGNER', UserRole.DESIGNER].includes(currentUser.role as any);
-
-  // Filter design orders
-  const pendingOrders = (orders || []).filter(o => {
-    const s = (o.status as string).toLowerCase();
-    return s === 'design' || s === 'hold';
-  });
-
-  const visibleOrders = pendingOrders.filter(order => {
-    if (!isDesigner) return true;
-    if (!order.assignedDesigner) return true;
-    const cleanAssigned = order.assignedDesigner.trim().toLowerCase();
-    const cleanUser = (currentUser?.name || '').trim().toLowerCase();
-    return cleanAssigned.includes(cleanUser) || cleanUser.includes(cleanAssigned);
-  });
-
-  const pureConversations = conversations.filter(c =>
-    !orders.some(o => o.id === c.id)
-  );
-
-  // Build design channels feed items
-  const designFeedItems = [
-    ...pureConversations.map(c => ({
-      id: c.id,
-      isOrder: false,
-      customerName: c.customerName,
-      category: 'Pure Conversation',
-      qty: 0,
-      message: c.message,
-      isUrgent: c.isUrgent || false,
-      statusText: c.convertedToOrderId ? 'Converted' : 'Discussion Only',
-      assignedDesigner: c.staffName || 'Unassigned',
-      createdAt: c.createdAt,
-      voiceNote: c.voiceNote,
-      imageAttachments: c.imageAttachments || [],
-      pdfAttachments: c.pdfAttachments || [],
-      convertedToOrderId: c.convertedToOrderId
-    })),
-    ...visibleOrders.map(o => {
-      const matchingConv = conversations.find(c => c.id === o.id);
-      return {
-        id: o.id,
-        isOrder: true,
-        customerName: o.customerInfo.name,
-        category: o.category,
-        qty: o.quantity,
-        message: o.notes || 'No notes',
-        isUrgent: o.isUrgent,
-        statusText: (o.status as string) === 'hold' ? 'On Hold' : 'Assigned Studio',
-        assignedDesigner: o.assignedDesigner || 'Unassigned',
-        createdAt: o.createdAt,
-        voiceNote: matchingConv?.voiceNote || null,
-        imageAttachments: o.staffImages || [],
-        pdfAttachments: o.staffPdfs || [],
-        convertedToOrderId: o.id
-      };
-    })
-  ].sort((a, b) => b.createdAt - a.createdAt);
-
-  const visibleFeedItems = designFeedItems.filter(item => {
-    if (!isDesigner) return true;
-    if (item.assignedDesigner === 'Unassigned' || !item.assignedDesigner || item.assignedDesigner === 'Designer assigned') return true;
-    const cleanAssigned = item.assignedDesigner.trim().toLowerCase();
-    const cleanUser = (currentUser?.name || '').trim().toLowerCase();
-    return cleanAssigned.includes(cleanUser) || cleanUser.includes(cleanAssigned);
-  });
-
-  const selectedFeedItem = visibleFeedItems.find(o => o.id === selectedOrderId);
-  const selectedOrderReal = visibleOrders.find(o => o.id === selectedOrderId);
-
-  const activeChatConv = selectedOrderId ? (conversations.find(c => c.id === selectedOrderId) || {
-    id: selectedOrderId,
-    customerName: selectedFeedItem?.customerName || 'Client',
-    staffName: selectedFeedItem?.assignedDesigner || 'Unassigned',
-    message: selectedFeedItem?.message || '',
-    imageAttachments: selectedFeedItem?.imageAttachments || [],
-    pdfAttachments: selectedFeedItem?.pdfAttachments || [],
-    voiceNote: selectedFeedItem?.voiceNote || null,
-    createdAt: selectedFeedItem?.createdAt || Date.now(),
-    replies: []
-  }) : null;
-
-  // DIRECT MESSAGES LOGIC
-  const activeDMUserIds = Object.keys(localStorage)
-    .filter(key => key.startsWith('pallywear_dms_'))
-    .map(key => {
-      const parts = key.replace('pallywear_dms_', '').split('_');
-      return parts.find(id => id !== currentUserId);
-    })
-    .filter(Boolean) as string[];
-
-  const activeDMUsers = registeredUsers.filter(u => {
-    if (u.id === currentUserId) return false;
-    return activeDMUserIds.includes(u.id) || loadDMMessages(currentUserId, u.id).length > 0;
-  });
-
-  // Construct unified chats feed for left panel
-  const unifiedChatsList = [
-    ...visibleFeedItems.map(item => ({
-      type: 'design' as const,
-      id: item.id,
-      title: `${item.customerName} (${item.isOrder ? 'Order' : 'Consult'})`,
-      subtitle: item.message,
-      category: item.category,
-      isUrgent: item.isUrgent,
-      statusText: item.statusText,
-      assignedDesigner: item.assignedDesigner,
-      createdAt: item.createdAt,
-      avatar: `https://ui-avatars.com/api/?name=${item.customerName}&background=4D109E&color=fff`
-    })),
-    ...activeDMUsers.map(u => {
-      const msgs = loadDMMessages(currentUserId, u.id);
-      const lastMsg = msgs[msgs.length - 1];
-      return {
-        type: 'dm' as const,
-        id: u.id,
-        title: u.name,
-        subtitle: lastMsg ? lastMsg.message : 'Start chatting...',
-        category: u.role,
-        isUrgent: false,
-        statusText: u.role?.replace('_', ' ') || 'User',
-        assignedDesigner: '',
-        createdAt: lastMsg ? lastMsg.createdAt : Number(u.createdAt) || Date.now(),
-        avatar: u.avatar || `https://ui-avatars.com/api/?name=${u.name}&background=1A0B91&color=fff`
-      };
-    })
-  ].sort((a, b) => b.createdAt - a.createdAt);
-
-  const filteredUnifiedList = unifiedChatsList.filter(chat => {
-    const q = searchQuery.toLowerCase();
-    return chat.title.toLowerCase().includes(q) || chat.subtitle.toLowerCase().includes(q) || chat.statusText.toLowerCase().includes(q);
-  });
-
-  // Users not yet in active DM chats matching search query
-  const matchingOtherUsers = registeredUsers.filter(u => {
-    if (u.id === currentUserId) return false;
-    if (activeDMUsers.some(au => au.id === u.id)) return false;
-    const q = searchQuery.toLowerCase();
-    return q && (u.name.toLowerCase().includes(q) || u.role.toLowerCase().includes(q));
-  });
-
-  const activeDMUser = selectedDMUserId ? registeredUsers.find(u => u.id === selectedDMUserId) : null;
-  const activeDMMessages = selectedDMUserId ? loadDMMessages(currentUserId, selectedDMUserId) : [];
-
-  const handleSendActiveChat = () => {
-    if (selectedOrderId) {
-      handleSendReply(selectedOrderId);
-    } else if (selectedDMUserId) {
-      handleSendDM();
-    }
-  };
-
-  const activeChatId = selectedOrderId || selectedDMUserId;
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
@@ -951,28 +737,29 @@ export default function ConversationDashboard({
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
       />
 
-      {/* Slideout Panel - WhatsApp Split Vibe */}
+      {/* Main split dashboard panel */}
       <motion.div
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-        className="relative md:w-[800px] lg:w-[960px] xl:w-[1100px] w-full bg-[#f0f2f5] h-full shadow-2xl flex z-10 border-l border-slate-200 overflow-hidden"
+        className="relative md:w-[850px] lg:w-[1000px] xl:w-[1150px] w-full bg-[#f0f2f5] h-full shadow-2xl flex z-10 border-l border-slate-200 overflow-hidden"
       >
-        {/* Left Side Pane - Chat List / Search */}
+        
+        {/* LEFT PANEL - Chats List */}
         <div className={cn(
-          "w-full md:w-[320px] lg:w-[360px] bg-white border-r border-slate-250 flex flex-col h-full shrink-0",
-          activeChatId ? "hidden md:flex" : "flex"
+          "w-full md:w-[340px] lg:w-[380px] bg-white border-r border-slate-200 flex flex-col h-full shrink-0",
+          selectedChatId ? "hidden md:flex" : "flex"
         )}>
-          {/* Left Header */}
+          {/* Header */}
           <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow">
+              <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow">
                 PW
               </div>
               <div>
-                <h3 className="text-xs font-black uppercase tracking-widest text-purple-300">Pallywear</h3>
-                <p className="text-[10px] text-slate-300 font-bold uppercase">Workspace Inbox</p>
+                <h3 className="text-xs font-black uppercase tracking-widest text-indigo-300">Pallywear</h3>
+                <p className="text-[10px] text-slate-300 font-bold uppercase">Advanced Inbox</p>
               </div>
             </div>
             <button
@@ -983,798 +770,624 @@ export default function ConversationDashboard({
             </button>
           </div>
 
-          {/* Search bar & Start Consult */}
-          <div className="p-3 border-b border-slate-100 flex flex-col gap-2 shrink-0 bg-slate-50">
+          {/* Search and Action Buttons */}
+          <div className="p-4 border-b border-slate-100 flex flex-col gap-3 shrink-0 bg-slate-50">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
               <input
                 type="text"
-                placeholder="Search or start new chat..."
-                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-medium placeholder:text-slate-400 text-slate-700"
+                placeholder="Search chats..."
+                className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs outline-none focus:ring-1 focus:ring-indigo-400 font-medium placeholder:text-slate-400 text-slate-700 shadow-sm"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
             
-            {/* Create consultation button (Only for non-designers) */}
-            {!isDesigner && (
+            {/* Direct & Group Action Triggers */}
+            <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => {
-                  setIsCreatingConsult(true);
-                  setSelectedOrderId(null);
-                  setSelectedDMUserId(null);
-                }}
-                className="w-full py-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-xl flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-wider transition-all"
+                onClick={() => setShowInviteModal(true)}
+                className="py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
               >
                 <Plus size={12} className="stroke-[3]" />
-                <span>Start New Consult</span>
+                <span>Invite Chat</span>
               </button>
-            )}
+              <button
+                onClick={() => setShowGroupModal(true)}
+                className="py-2.5 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-xl flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+              >
+                <Users size={12} className="stroke-[3]" />
+                <span>Create Group</span>
+              </button>
+            </div>
           </div>
 
-          {/* Chat List Scroll Container */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-            {/* Active List */}
-            {filteredUnifiedList.map((chat) => {
-              const isSelected = chat.type === 'design' ? selectedOrderId === chat.id : selectedDMUserId === chat.id;
-              return (
-                <button
-                  key={chat.id}
-                  onClick={() => {
-                    setIsCreatingConsult(false);
-                    setIsConvertingToOrder(false);
-                    if (chat.type === 'design') {
-                      setSelectedOrderId(chat.id);
-                      setSelectedDMUserId(null);
-                    } else {
-                      setSelectedDMUserId(chat.id);
-                      setSelectedOrderId(null);
-                    }
-                  }}
-                  className={cn(
-                    "w-full p-4 flex gap-3 text-left transition-all relative",
-                    isSelected ? "bg-slate-100/80 border-l-4 border-purple-600 pl-3" : "hover:bg-slate-50 bg-white"
-                  )}
-                >
-                  <img
-                    src={chat.avatar}
-                    alt={chat.title}
-                    className="w-10 h-10 rounded-full border border-slate-100 flex-shrink-0 object-cover"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex justify-between items-baseline mb-0.5">
-                      <h4 className="text-xs font-black text-slate-800 truncate pr-2">{chat.title}</h4>
-                      <span className="text-[9px] text-slate-400 font-semibold tabular-nums">
-                        {new Date(chat.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+          {/* Horizontal Filters Tabs */}
+          <div className="px-4 py-2 bg-white border-b border-slate-100 flex gap-2 overflow-x-auto shrink-0 no-scrollbar">
+            {([
+              ['all', 'All Chats'],
+              ['unread', 'Unread'],
+              ['groups', 'Groups'],
+              ['invites', `Invites (${pendingInvites.length})`]
+            ] as const).map(([tab, label]) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap border",
+                  activeTab === tab
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                    : "bg-slate-50 border-slate-200 text-slate-550 hover:bg-slate-100 hover:text-slate-800"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Chats List Scroll container */}
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white">
+            
+            {/* Pending Invites View */}
+            {activeTab === 'invites' ? (
+              <div className="divide-y divide-slate-100">
+                {pendingInvites.map(inv => {
+                  const isReceived = inv.recipientEmail.toLowerCase().trim() === currentUserEmail.toLowerCase().trim();
+                  return (
+                    <div key={inv.id} className="p-4 bg-indigo-50/20 text-left space-y-3">
+                      <div className="flex gap-2 items-start">
+                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                          <Mail size={14} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs font-bold text-slate-800">
+                            {isReceived ? `Invite from ${inv.senderName}` : `Invite sent to ${inv.recipientEmail}`}
+                          </h4>
+                          <p className="text-[10px] text-slate-450 mt-0.5">
+                            {isReceived
+                              ? `Invited you to start a ${inv.chatType} chat${inv.groupName ? ` in "${inv.groupName}"` : ''}.`
+                              : `Waiting for them to accept the invitation.`}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {isReceived && (
+                        <div className="flex gap-2 pl-10">
+                          <button
+                            onClick={() => handleAcceptInvite(inv)}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => handleDeclineInvite(inv)}
+                            className="px-3 py-1.5 border border-slate-250 hover:bg-slate-50 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 truncate">
-                      {chat.statusText}
-                    </p>
-                    <p className="text-[11px] text-slate-500 font-medium truncate pr-1">
-                      {chat.subtitle}
-                    </p>
+                  );
+                })}
+
+                {pendingInvites.length === 0 && (
+                  <p className="p-8 text-center text-xs text-slate-400 italic">No pending invitations.</p>
+                )}
+              </div>
+            ) : (
+              // Active Chats List
+              <>
+                {filteredChats.map(chat => {
+                  const isSelected = selectedChatId === chat.id;
+                  const isGroup = chat.type === 'group';
+                  const unread = chat.unreadCount ? chat.unreadCount[currentUserId] || 0 : 0;
+                  
+                  return (
+                    <button
+                      key={chat.id}
+                      onClick={() => setSelectedChatId(chat.id)}
+                      className={cn(
+                        "w-full p-4 flex gap-3 text-left transition-all relative border-l-4",
+                        isSelected ? "bg-slate-55 border-indigo-600 pl-3" : "hover:bg-slate-50/50 bg-white border-transparent"
+                      )}
+                    >
+                      <img
+                        src={chat.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.name)}`}
+                        alt={chat.name}
+                        className="w-11 h-11 rounded-full border border-slate-100 flex-shrink-0 object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex justify-between items-baseline mb-0.5">
+                          <h4 className="text-xs font-black text-slate-800 truncate pr-2 flex items-center gap-1">
+                            {isGroup && <Users size={12} className="text-purple-600 shrink-0" />}
+                            {chat.name}
+                          </h4>
+                          {chat.lastMessageTime && (
+                            <span className="text-[9px] text-slate-400 font-bold tabular-nums">
+                              {new Date(chat.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                        
+                        <p className="text-[10px] text-slate-450 uppercase font-black tracking-wider mb-0.5">
+                          {isGroup ? 'Group Chat' : chat.recipientRole?.replace('_', ' ') || 'Chat'}
+                        </p>
+
+                        <p className="text-[11px] text-slate-500 font-medium truncate pr-1">
+                          {chat.lastSenderName && `${chat.lastSenderName}: `}
+                          {chat.lastMessage}
+                        </p>
+                      </div>
+
+                      {/* Unread badge */}
+                      {unread > 0 && (
+                        <span className="absolute right-4 bottom-4 w-5 h-5 rounded-full bg-indigo-600 text-white font-black text-[9px] flex items-center justify-center shadow-sm">
+                          {unread}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
+                {filteredChats.length === 0 && (
+                  <div className="p-12 text-center text-slate-400 italic text-xs">
+                    No active chats found. Click "Invite Chat" to send invitations by email.
                   </div>
-                  {chat.isUrgent && (
-                    <span className="absolute top-4 right-4 w-2 h-2 bg-red-500 rounded-full animate-ping" />
-                  )}
-                </button>
-              );
-            })}
-
-            {/* Other Users to start chat */}
-            {matchingOtherUsers.length > 0 && (
-              <div>
-                <div className="px-4 py-2 bg-slate-50 text-[9px] font-black uppercase text-slate-400 tracking-widest border-y border-slate-100">
-                  Start New Chat
-                </div>
-                {matchingOtherUsers.map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => {
-                      setIsCreatingConsult(false);
-                      setIsConvertingToOrder(false);
-                      setSelectedDMUserId(u.id);
-                      setSelectedOrderId(null);
-                      setSearchQuery('');
-                    }}
-                    className="w-full p-4 flex gap-3 items-center text-left hover:bg-slate-50 bg-white transition-all"
-                  >
-                    <img
-                      src={u.avatar || `https://ui-avatars.com/api/?name=${u.name}&background=1A0B91&color=fff`}
-                      alt={u.name}
-                      className="w-9 h-9 rounded-full border border-slate-100 flex-shrink-0 object-cover"
-                    />
-                    <div>
-                      <h4 className="text-xs font-black text-slate-800">{u.name}</h4>
-                      <p className="text-[9px] text-purple-600 font-extrabold uppercase mt-0.5 tracking-wider">
-                        {u.role?.replace('_', ' ')}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                )}
+              </>
             )}
 
-            {filteredUnifiedList.length === 0 && matchingOtherUsers.length === 0 && (
-              <div className="p-8 text-center text-slate-400 italic text-xs">
-                No active conversations or users found.
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Right Side Main Area - Active Thread or Blank Splash */}
+        {/* RIGHT PANEL - Active Thread / Splash Screen */}
         <div className={cn(
-          "flex-1 flex flex-col h-full bg-[#efeae2] relative",
-          !activeChatId && !isCreatingConsult ? "hidden md:flex" : "flex"
+          "flex-1 flex flex-col h-full bg-[#f4f7f6] relative",
+          !selectedChatId ? "hidden md:flex" : "flex"
         )}>
-          {/* Consultation Intake Form Overlay in Right Pane */}
-          {isCreatingConsult ? (
-            <div className="flex-1 flex flex-col bg-white h-full text-left">
-              <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Palette size={18} className="text-purple-400" />
-                  <div>
-                    <h4 className="text-xs font-black uppercase text-purple-300 tracking-widest">Artist Intake Form</h4>
-                    <p className="text-[10px] text-slate-300">Initiate a custom pattern design request</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsCreatingConsult(false)}
-                  className="p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
-                    Customer Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-bold text-slate-800"
-                    placeholder="e.g. Gaurav Nair"
-                    value={consultCustomerName}
-                    onChange={(e) => setConsultCustomerName(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
-                    Design Concept / Idea description
-                  </label>
-                  <textarea
-                    rows={4}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-medium text-slate-700 resize-none"
-                    placeholder="Specify sleeve designs, colours, reference details..."
-                    value={consultDescription}
-                    onChange={(e) => setConsultDescription(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
-                    Upload Reference Images
-                  </label>
-                  {consultImageAttachments.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2 mb-2">
-                      {consultImageAttachments.map((img, idx) => (
-                        <div key={idx} className="relative aspect-[4/3] rounded-xl border border-slate-200 overflow-hidden">
-                          <img src={img} alt="ref" className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => setConsultImageAttachments(prev => prev.filter((_, i) => i !== idx))}
-                            className="absolute top-1 right-1 bg-red-650 text-white p-1 rounded-full hover:bg-red-750"
-                          >
-                            <X size={10} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <input
-                    type="file"
-                    id="right-pane-consult-image-input"
-                    accept="image/*"
-                    className="hidden"
-                    multiple
-                    onChange={handleConsultImageChange}
-                  />
-                  <button
-                    type="button"
-                    disabled={isConsultCompressing}
-                    onClick={() => document.getElementById('right-pane-consult-image-input')?.click()}
-                    className="w-full py-2.5 border border-dashed border-purple-200 hover:border-purple-400 bg-purple-50/20 rounded-xl flex items-center justify-center gap-2 text-[10px] font-black uppercase text-purple-700 tracking-wider"
-                  >
-                    {isConsultCompressing ? "Optimizing files..." : "Upload Artwork Reference"}
-                  </button>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1.5">
-                    Speech brief / Voice note
-                  </label>
-                  {consultVoiceNote ? (
-                    <div className="bg-purple-50 p-3 rounded-xl flex justify-between items-center">
-                      <audio src={consultVoiceNote} controls className="h-8 max-w-[200px]" />
-                      <button
-                        type="button"
-                        onClick={() => setConsultVoiceNote(null)}
-                        className="text-[9px] text-red-600 font-extrabold uppercase"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 flex gap-2">
-                      {isConsultRecording ? (
-                        <div className="flex-1 flex flex-col items-center py-1">
-                          <span className="text-[10px] font-bold text-red-650 animate-pulse">Recording Brief...</span>
-                          <button
-                            type="button"
-                            onClick={stopConsultRecording}
-                            className="mt-2 px-3 py-1 bg-red-650 text-white rounded text-[9px] font-bold uppercase"
-                          >
-                            Stop
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={startConsultRecording}
-                            className="flex-1 py-2 bg-purple-650 text-white rounded-xl text-[10px] font-bold uppercase"
-                          >
-                            Record Voice
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const testBlob = generateSimulatedVoiceBlob();
-                              const reader = new FileReader();
-                              reader.onloadend = () => setConsultVoiceNote(reader.result as string);
-                              reader.readAsDataURL(testBlob);
-                            }}
-                            className="flex-1 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-[10px] font-bold uppercase"
-                          >
-                            Simulate Voice
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingConsult(false)}
-                  className="px-4 py-2 border border-slate-250 text-slate-500 rounded-xl text-[10px] font-black uppercase"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={isProcessing}
-                  onClick={handleCreateConsultation}
-                  className="px-5 py-2 bg-purple-600 text-white rounded-xl text-[10px] font-black uppercase"
-                >
-                  Launch Consultation
-                </button>
-              </div>
-            </div>
-          ) : activeChatId ? (
-            // Chat viewport
+          {activeChat ? (
             <>
-              {/* Right Pane Header */}
-              <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-3">
+              {/* Thread Header */}
+              <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
+                <div className="flex items-center gap-3 min-w-0">
                   <button
-                    onClick={() => {
-                      setSelectedOrderId(null);
-                      setSelectedDMUserId(null);
-                    }}
+                    onClick={() => setSelectedChatId(null)}
                     className="p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white md:hidden"
                   >
                     <ArrowLeft size={18} />
                   </button>
                   <img
-                    src={selectedOrderId
-                      ? `https://ui-avatars.com/api/?name=${selectedFeedItem?.customerName}&background=4D109E&color=fff`
-                      : activeDMUser?.avatar || `https://ui-avatars.com/api/?name=${activeDMUser?.name}&background=1A0B91&color=fff`
-                    }
-                    className="w-10 h-10 rounded-full border border-slate-800 object-cover"
-                    alt="avatar"
+                    src={activeChat.avatar}
+                    alt={activeChat.name}
+                    className="w-9 h-9 rounded-full object-cover border border-slate-700"
                   />
-                  <div className="text-left">
-                    <h4 className="text-xs font-black text-white truncate max-w-[200px] md:max-w-xs">
-                      {selectedOrderId ? selectedFeedItem?.customerName : activeDMUser?.name}
-                    </h4>
-                    <p className="text-[10px] text-slate-350 font-bold uppercase tracking-wide">
-                      {selectedOrderId
-                        ? `${selectedFeedItem?.category} • #${selectedOrderId.slice(-6)}`
-                        : activeDMUser?.role?.replace('_', ' ') || 'User'
-                      }
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-black truncate">{activeChat.name}</h4>
+                    <p className="text-[9px] text-slate-400 truncate mt-0.5 font-bold uppercase tracking-wider">
+                      {activeChat.type === 'group'
+                        ? `${activeChat.participants.length} participants`
+                        : activeChat.recipientEmail}
                     </p>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  {selectedOrderId && !selectedFeedItem?.isOrder && !isDesigner && (
-                    <button
-                      onClick={startOrderConversionFlow}
-                      className="px-3 py-1.5 bg-purple-650 hover:bg-purple-750 text-white rounded-lg text-[9px] font-black uppercase tracking-wider transition"
-                    >
-                      Convert to Order
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setSelectedOrderId(null);
-                      setSelectedDMUserId(null);
-                    }}
-                    className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white hidden md:block"
-                    title="Close session"
-                  >
-                    <X size={18} />
+                
+                <div className="flex items-center gap-1.5 text-slate-400">
+                  <button className="p-2 hover:bg-slate-850 rounded-xl hover:text-white transition">
+                    <Phone size={15} />
+                  </button>
+                  <button className="p-2 hover:bg-slate-850 rounded-xl hover:text-white transition">
+                    <Video size={15} />
+                  </button>
+                  <button className="p-2 hover:bg-slate-850 rounded-xl hover:text-white transition">
+                    <Info size={15} />
                   </button>
                 </div>
               </div>
 
-              {/* Chat Panel Body (Scroll Area) */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 flex flex-col min-h-0 bg-[#efeae2] relative select-text">
-                {/* Spec details card (Only for design chats) */}
-                {selectedOrderId && selectedFeedItem && !isConvertingToOrder && (
-                  <div className="bg-white/95 backdrop-blur border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-3 font-sans shrink-0 text-left">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[9px] font-black uppercase text-purple-700 tracking-wider">
-                        Spec sheet details
-                      </span>
-                      <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded">
-                        {selectedFeedItem.statusText}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs">
-                      <div>
-                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Customer</span>
-                        <span className="font-bold text-slate-800">{selectedFeedItem.customerName}</span>
-                      </div>
-                      <div>
-                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Quantity</span>
-                        <span className="font-bold text-slate-800">{selectedFeedItem.isOrder ? `${selectedFeedItem.qty} units` : 'In Consultation'}</span>
-                      </div>
-                    </div>
-
-                    <p className="text-[11px] text-slate-600 font-medium bg-slate-50/50 p-2.5 rounded-lg border border-slate-100">
-                      {selectedFeedItem.message}
+              {/* Chat invitation banner check (only if creator hasn't accepted yet, or pending recipient acceptance) */}
+              {!hasAcceptedChat && activeChatInvite ? (
+                <div className="bg-indigo-50 border-b border-indigo-150 p-6 text-center space-y-3 shrink-0">
+                  <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center mx-auto">
+                    <Mail size={20} />
+                  </div>
+                  <div className="max-w-md mx-auto">
+                    <h4 className="text-sm font-black text-slate-900">Pending Chat Invitation</h4>
+                    <p className="text-xs text-slate-500 font-medium mt-1">
+                      {activeChatInvite.senderName} ({activeChatInvite.senderEmail}) invited you to start a chat. Accept the invitation to join.
                     </p>
+                  </div>
+                  <div className="flex justify-center gap-3 pt-1">
+                    <button
+                      onClick={() => handleAcceptInvite(activeChatInvite)}
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                      Accept Chat
+                    </button>
+                    <button
+                      onClick={() => handleDeclineInvite(activeChatInvite)}
+                      className="px-5 py-2.5 border border-slate-250 hover:bg-slate-50 text-slate-650 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ) : activeChat.acceptedParticipants.length < activeChat.participants.length && activeChat.type === 'direct' ? (
+                // Invitation sent, waiting for recipient acceptance banner
+                <div className="bg-slate-50 border-b border-slate-150 py-3.5 px-6 flex items-center justify-center gap-2 text-slate-500 text-xs font-bold shrink-0">
+                  <Clock size={14} className="text-slate-450" />
+                  <span>Waiting for recipient to accept the invitation...</span>
+                </div>
+              ) : null}
 
-                    {selectedFeedItem.voiceNote && (
-                      <div className="bg-purple-50/50 p-2 rounded-xl flex items-center gap-3 border border-purple-100">
-                        <Mic size={14} className="text-purple-600" />
-                        <audio src={selectedFeedItem.voiceNote} controls className="h-7 w-full" />
-                      </div>
-                    )}
+              {/* Messages Container */}
+              <div 
+                className="flex-1 overflow-y-auto px-6 py-5 space-y-4 bg-[#efeae2] relative border-b border-slate-200"
+                style={{ backgroundImage: 'radial-gradient(#d3c6b2 10%, transparent 10%)', backgroundSize: '16px 16px' }}
+              >
+                <div className="mx-auto max-w-sm py-2 px-3 bg-white/70 backdrop-blur-sm rounded-xl text-center border border-white/50 text-[10px] font-bold text-slate-500 shadow-sm flex items-center justify-center gap-1.5 mb-2">
+                  <Lock size={10} className="text-slate-400" />
+                  <span>Messages are encrypted. Click on leave log badges to delete logs.</span>
+                </div>
 
-                    {selectedFeedItem.imageAttachments && selectedFeedItem.imageAttachments.length > 0 && (
-                      <div>
-                        <span className="text-[8px] text-slate-400 font-bold uppercase block mb-1.5">References</span>
-                        <div className="flex gap-2 overflow-x-auto py-1">
-                          {selectedFeedItem.imageAttachments.map((img, i) => (
-                            <button
+                {activeChatMessages.map((msg) => {
+                  const isMe = msg.senderId === currentUserId;
+                  return (
+                    <div
+                      key={msg.id}
+                      className={cn(
+                        "flex flex-col max-w-[70%] rounded-2xl p-3 shadow-sm text-left relative transition-all duration-300",
+                        isMe
+                          ? "bg-[#d9fdd3] text-slate-800 ml-auto border border-emerald-100"
+                          : "bg-white text-slate-800 mr-auto border border-slate-100"
+                      )}
+                    >
+                      {/* Sender details for groups */}
+                      {!isMe && activeChat.type === 'group' && (
+                        <span className="text-[9px] font-black text-purple-700 uppercase tracking-wider block mb-1">
+                          {msg.senderName} ({msg.senderRole})
+                        </span>
+                      )}
+                      
+                      {/* Message text */}
+                      {msg.message && (
+                        <p className="text-xs font-medium leading-relaxed break-words whitespace-pre-wrap">
+                          {msg.message}
+                        </p>
+                      )}
+
+                      {/* Attachments rendering */}
+                      {msg.imageAttachments && msg.imageAttachments.length > 0 && (
+                        <div className="grid grid-cols-2 gap-1.5 mt-2">
+                          {msg.imageAttachments.map((img, i) => (
+                            <div
                               key={i}
                               onClick={() => setViewImage(img)}
-                              className="relative w-16 h-16 border border-slate-200 rounded-lg overflow-hidden bg-slate-50 hover:scale-[1.02] transition shrink-0"
+                              className="relative aspect-square rounded-xl overflow-hidden border border-black/5 cursor-zoom-in"
                             >
-                              <img src={img} alt="ref" className="w-full h-full object-cover" />
-                            </button>
+                              <img src={img} alt="attachment" className="w-full h-full object-cover" />
+                            </div>
                           ))}
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Conversion workflow Form in right pane */}
-                {isConvertingToOrder && selectedFeedItem && (
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-md space-y-4 text-left font-sans max-w-xl mx-auto shrink-0">
-                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                      <h4 className="text-xs font-black uppercase text-purple-700 tracking-wider">Book Formal Production Order</h4>
-                      <button onClick={() => setIsConvertingToOrder(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
-                        <X size={16} />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div className="col-span-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Customer</label>
-                        <input type="text" className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-700 outline-none" value={selectedFeedItem.customerName} disabled />
-                      </div>
-
-                      <div>
-                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Phone</label>
-                        <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" placeholder="+91 XXXXX XXXXX" value={convPhone} onChange={(e) => setConvPhone(e.target.value)} />
-                      </div>
-
-                      <div>
-                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Address</label>
-                        <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" placeholder="City Address" value={convAddress} onChange={(e) => setConvAddress(e.target.value)} />
-                      </div>
-
-                      <div>
-                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Category</label>
-                        <select className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750 outline-none" value={convCategory} onChange={(e) => setConvCategory(e.target.value)}>
-                          <option value="Art Consult">Art Consult</option>
-                          <option value="T-Shirt">T-Shirt</option>
-                          <option value="Hoodie">Hoodie</option>
-                          <option value="Sweatshirt">Sweatshirt</option>
-                          <option value="Custom Wear">Custom Wear</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Print Type</label>
-                        <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" value={convPrintType} onChange={(e) => setConvPrintType(e.target.value)} />
-                      </div>
-
-                      <div>
-                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Quantity (pcs)</label>
-                        <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" value={convQty} onChange={(e) => setConvQty(Number(e.target.value))} />
-                      </div>
-
-                      <div>
-                        <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Price Amount</label>
-                        <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-semibold text-slate-750" value={convTotalAmount} onChange={(e) => setConvTotalAmount(Number(e.target.value))} />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-                      <button type="button" onClick={() => setIsConvertingToOrder(false)} className="px-4 py-2 border border-slate-250 text-slate-500 rounded-lg text-[10px] font-black uppercase">Cancel</button>
-                      <button type="button" disabled={isProcessing} onClick={handleConfirmOrderConversion} className="px-5 py-2.5 bg-purple-600 text-white rounded-lg text-[10px] font-black uppercase">Place Production Order</button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Message Bubble Stream */}
-                <div className="flex-1 flex flex-col gap-3 overflow-y-auto">
-                  {/* DESIGN CHAT DIALOGUE */}
-                  {selectedOrderId && (
-                    <>
-                      {(!activeChatConv || !activeChatConv.replies || activeChatConv.replies.length === 0) ? (
-                        <div className="text-center py-10 text-slate-400 italic text-xs">
-                          No conversation comments in this thread yet. Send a note or attach drawings below.
-                        </div>
-                      ) : (
-                        activeChatConv.replies.map((rep) => {
-                          const isMe = rep.senderName.startsWith(currentUser?.name || '---');
-                          return (
-                            <div
-                              key={rep.id}
-                              className={cn(
-                                "p-3 rounded-2xl shadow-sm text-xs max-w-[85%] flex flex-col text-left font-sans relative",
-                                isMe
-                                  ? "bg-[#d9fdd3] text-slate-800 self-end rounded-tl-xl rounded-tr-sm rounded-b-xl"
-                                  : "bg-white text-slate-800 self-start rounded-tr-xl rounded-tl-sm rounded-b-xl"
-                              )}
-                            >
-                              <div className="flex justify-between items-baseline gap-4 mb-1 border-b border-slate-100 pb-0.5">
-                                <span className={cn("font-black text-[9px] uppercase", isMe ? "text-green-750" : "text-purple-700")}>
-                                  {rep.senderName}
-                                </span>
-                                <span className="text-[8px] text-slate-400 font-semibold">
-                                  {new Date(rep.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              </div>
-                              <p className="text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed">{rep.message}</p>
-
-                              {/* Attachments */}
-                              {((rep.imageAttachments && rep.imageAttachments.length > 0) || (rep.pdfAttachments && rep.pdfAttachments.length > 0)) && (
-                                <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
-                                  {rep.imageAttachments?.map((img, i) => (
-                                    <div key={i} className="relative aspect-square border border-slate-100 rounded-lg overflow-hidden bg-slate-50 group cursor-pointer">
-                                      <img src={img} alt="mockup" className="w-full h-full object-cover" />
-                                      <div
-                                        onClick={() => setViewImage(img)}
-                                        className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[8px] font-black uppercase"
-                                      >
-                                        View HD
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDownloadImage(img, `design_file_${rep.id}_${i}.png`);
-                                        }}
-                                        className="absolute bottom-1 right-1 bg-black/75 p-1 rounded text-white shadow-md z-10"
-                                      >
-                                        <Download size={10} />
-                                      </button>
-                                    </div>
-                                  ))}
-                                  {rep.pdfAttachments?.map((pdf, i) => (
-                                    <a
-                                      key={i}
-                                      href={pdf}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="aspect-square border border-slate-200 rounded-lg bg-white flex flex-col items-center justify-center p-2 text-center"
-                                    >
-                                      <FileText size={16} className="text-slate-400" />
-                                      <span className="text-[8px] font-bold text-slate-500 truncate w-full mt-1">PDF File</span>
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })
                       )}
-                    </>
-                  )}
 
-                  {/* DIRECT MESSAGES DIALOGUE */}
-                  {selectedDMUserId && (
-                    <>
-                      {activeDMMessages.length === 0 ? (
-                        <div className="text-center py-10 text-slate-400 italic text-xs">
-                          No messages in this chat yet. Start a direct discussion with {activeDMUser?.name}!
-                        </div>
-                      ) : (
-                        activeDMMessages.map((msg) => {
-                          const isMe = msg.senderName === currentUser?.name;
-                          return (
-                            <div
-                              key={msg.id}
-                              className={cn(
-                                "p-3 rounded-2xl shadow-sm text-xs max-w-[85%] flex flex-col text-left font-sans",
-                                isMe
-                                  ? "bg-[#d9fdd3] text-slate-800 self-end rounded-tl-xl rounded-tr-sm rounded-b-xl"
-                                  : "bg-white text-slate-800 self-start rounded-tr-xl rounded-tl-sm rounded-b-xl"
-                              )}
+                      {msg.pdfAttachments && msg.pdfAttachments.length > 0 && (
+                        <div className="space-y-1.5 mt-2">
+                          {msg.pdfAttachments.map((file, i) => (
+                            <a
+                              key={i}
+                              href={file}
+                              download={`document_${i + 1}.pdf`}
+                              className="flex items-center gap-2 p-2 rounded-xl bg-black/5 hover:bg-black/10 text-xs font-bold text-slate-650"
                             >
-                              <div className="flex justify-between items-baseline gap-4 mb-1 border-b border-slate-105 pb-0.5">
-                                <span className={cn("font-black text-[9px] uppercase", isMe ? "text-green-750" : "text-blue-700")}>
-                                  {msg.senderName}
-                                </span>
-                                <span className="text-[8px] text-slate-400 font-semibold">
-                                  {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              </div>
-                              <p className="text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed">{msg.message}</p>
-
-                              {/* DM Attachments */}
-                              {((msg.imageAttachments && msg.imageAttachments.length > 0) || (msg.pdfAttachments && msg.pdfAttachments.length > 0)) && (
-                                <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
-                                  {msg.imageAttachments?.map((img, i) => (
-                                    <div key={i} className="relative aspect-square border border-slate-100 rounded-lg overflow-hidden bg-slate-50 group cursor-pointer">
-                                      <img src={img} alt="attachment" className="w-full h-full object-cover" />
-                                      <div
-                                        onClick={() => setViewImage(img)}
-                                        className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[8px] font-black uppercase"
-                                      >
-                                        View HD
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDownloadImage(img, `dm_file_${msg.id}_${i}.png`);
-                                        }}
-                                        className="absolute bottom-1 right-1 bg-black/75 p-1 rounded text-white shadow-md z-10"
-                                      >
-                                        <Download size={10} />
-                                      </button>
-                                    </div>
-                                  ))}
-                                  {msg.pdfAttachments?.map((pdf, i) => (
-                                    <a
-                                      key={i}
-                                      href={pdf}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="aspect-square border border-slate-200 rounded-lg bg-white flex flex-col items-center justify-center p-2 text-center"
-                                    >
-                                      <FileText size={16} className="text-slate-400" />
-                                      <span className="text-[8px] font-bold text-slate-500 truncate w-full mt-1">PDF File</span>
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })
+                              <FileText size={14} />
+                              Document {i + 1}
+                            </a>
+                          ))}
+                        </div>
                       )}
-                    </>
-                  )}
-                </div>
+
+                      {/* Voice Note representation */}
+                      {msg.voiceNote && (
+                        <div className="flex items-center gap-2 mt-2 bg-black/5 p-2 rounded-xl">
+                          <Play size={14} className="text-slate-600 fill-slate-600" />
+                          <div className="h-1 bg-slate-300 flex-1 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 w-1/3 rounded-full" />
+                          </div>
+                          <span className="text-[9px] text-slate-500 font-bold">0:04</span>
+                        </div>
+                      )}
+
+                      {/* Footer: Time + Read Receipts */}
+                      <div className="flex items-center justify-end gap-1 mt-1 text-[9px] text-slate-400 font-bold">
+                        <span>
+                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {isMe && (
+                          <span className={cn(
+                            msg.readBy.length > 1 || activeChat.participants.every(p => msg.readBy.includes(p))
+                              ? "text-sky-500"
+                              : "text-slate-400"
+                          )}>
+                            <CheckCheck size={13} />
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={chatEndRef} />
               </div>
 
-              {/* Compose Bar Footer & Spec Actions */}
-              <div className="bg-slate-50 p-3 border-t border-slate-200 shrink-0">
-                {/* Attachments Preview */}
-                {activeChatId && replyAttachments[activeChatId] && replyAttachments[activeChatId].length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 p-1.5 bg-white border border-slate-200 rounded-xl mb-2 text-left">
-                    {replyAttachments[activeChatId].map((att, i) => (
-                      <div key={i} className="relative w-11 h-11 border border-slate-150 rounded-lg overflow-hidden flex items-center justify-center bg-slate-50">
-                        {att.type.startsWith('image/') ? (
-                          <img src={att.data} alt="thumb" className="w-full h-full object-cover" />
-                        ) : (
-                          <FileText size={18} className="text-slate-400" />
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReplyAttachments(prev => ({
-                              ...prev,
-                              [activeChatId]: prev[activeChatId].filter((_, idx) => idx !== i)
-                            }));
-                          }}
-                          className="absolute -top-1 -right-1 bg-red-500 text-white p-0.5 rounded-full shadow"
-                        >
-                          <X size={8} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Input row */}
-                <div className="flex gap-2 items-center">
+              {/* Message Input bar */}
+              <form
+                onSubmit={handleSendMessage}
+                disabled={!hasAcceptedChat}
+                className="px-5 py-3.5 bg-[#f0f2f5] border-t border-slate-200 flex items-center gap-3 shrink-0"
+              >
+                {/* File Upload action */}
+                <div className="relative">
                   <input
                     type="file"
-                    id={`chat-reply-file-select-${activeChatId}`}
+                    id="inbox-msg-file-input"
+                    accept="image/*,application/pdf"
                     className="hidden"
-                    accept="image/*,.pdf"
                     multiple
-                    onChange={(e) => handleReplyFileChange(activeChatId, e)}
+                    onChange={handleFileChange}
                   />
                   <button
                     type="button"
-                    onClick={() => document.getElementById(`chat-reply-file-select-${activeChatId}`)?.click()}
-                    className="p-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-xl transition shadow-sm"
-                    title="Attach files"
+                    disabled={isCompressing || !hasAcceptedChat}
+                    onClick={() => document.getElementById('inbox-msg-file-input')?.click()}
+                    className="p-2.5 bg-white border border-slate-250 text-slate-500 hover:text-indigo-650 hover:border-indigo-200 rounded-xl transition cursor-pointer disabled:opacity-50"
                   >
-                    <Plus size={16} className="stroke-[3]" />
+                    <Paperclip size={16} />
                   </button>
-
-                  <input
-                    type="text"
-                    className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:ring-1 focus:ring-purple-400 font-semibold placeholder:text-slate-400 text-slate-800 shadow-sm"
-                    placeholder="Type a message..."
-                    value={replyInput[activeChatId] || ''}
-                    onChange={(e) => setReplyInput(prev => ({ ...prev, [activeChatId]: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSendActiveChat();
-                    }}
-                  />
-
-                  {/* Mic for Voice Note Simulation */}
-                  {voiceNoteBase64 ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded uppercase font-black tracking-widest animate-pulse">Voice brief loaded</span>
-                      <button
-                        type="button"
-                        onClick={() => setVoiceNoteBase64(null)}
-                        className="text-[9px] text-red-500 font-extrabold uppercase mr-1"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const testBlob = generateSimulatedVoiceBlob();
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setVoiceNoteBase64(reader.result as string);
-                          alert("Notice: Simulated a 2.5s voice note message for instant preview.");
-                        };
-                        reader.readAsDataURL(testBlob);
-                      }}
-                      className="p-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-500 rounded-xl transition"
-                      title="Record speech brief"
-                    >
-                      <Mic size={16} />
-                    </button>
-                  )}
-
-                  {isReplyCompressing[activeChatId] ? (
-                    <div className="w-8 h-8 flex items-center justify-center">
-                      <span className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleSendActiveChat}
-                      className="p-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl flex items-center justify-center transition shadow-md active:scale-95"
-                    >
-                      <Send size={14} />
-                    </button>
-                  )}
                 </div>
 
-                {/* Workflow footer buttons (Only for design chats) */}
-                {selectedOrderId && selectedFeedItem && !isConvertingToOrder && (
-                  <div className="mt-3 pt-2.5 border-t border-slate-200/50 flex gap-2 justify-end">
-                    {isDesigner ? (
-                      !selectedFeedItem.assignedDesigner || selectedFeedItem.assignedDesigner === 'Unassigned' || selectedFeedItem.assignedDesigner === 'Designer assigned' ? (
-                        <button
-                          disabled={isProcessing}
-                          onClick={() => handleTakeArt(selectedOrderId)}
-                          className="px-4 py-2 bg-purple-600 text-white rounded-xl text-[10px] font-black uppercase shadow tracking-wider"
-                        >
-                          Claim Design Workspace
-                        </button>
-                      ) : (
-                        (selectedFeedItem.assignedDesigner.toLowerCase().includes((currentUser?.name || '').toLowerCase()) ||
-                         (currentUser?.name || '').toLowerCase().includes(selectedFeedItem.assignedDesigner.toLowerCase())) && (
-                          <button
-                            disabled={isProcessing}
-                            onClick={() => handleFinishAndSendToStaff(selectedOrderId)}
-                            className="px-4 py-2 bg-slate-950 hover:bg-purple-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow"
-                          >
-                            <Check size={12} className="stroke-[3]" />
-                            <span>Finish & Send to Staff</span>
-                          </button>
-                        )
-                      )
-                    ) : (
-                      !selectedFeedItem.isOrder && (
-                        <button
-                          onClick={startOrderConversionFlow}
-                          className="w-full py-2 bg-purple-600 hover:bg-purple-750 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow"
-                        >
-                          <Plus size={12} className="stroke-[3]" />
-                          <span>Convert to Production Order</span>
-                        </button>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
+                {/* Voice Note trigger */}
+                <button
+                  type="button"
+                  disabled={!hasAcceptedChat}
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={cn(
+                    "p-2.5 border rounded-xl transition cursor-pointer disabled:opacity-50",
+                    isRecording
+                      ? "bg-red-50 border-red-250 text-red-600 animate-pulse"
+                      : "bg-white border-slate-250 text-slate-500 hover:text-emerald-600 hover:border-emerald-200"
+                  )}
+                >
+                  {isRecording ? <Square size={16} /> : <Mic size={16} />}
+                </button>
+
+                {/* Text area */}
+                <input
+                  type="text"
+                  placeholder={hasAcceptedChat ? "Type a message..." : "Invitation pending acceptance..."}
+                  disabled={!hasAcceptedChat}
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  className="flex-1 bg-white border border-slate-250 rounded-xl px-4 py-2.5 text-xs font-semibold placeholder-slate-400 outline-none focus:ring-1 focus:ring-indigo-400 shadow-sm disabled:opacity-50"
+                />
+
+                {/* Send button */}
+                <button
+                  type="submit"
+                  disabled={!hasAcceptedChat}
+                  className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition cursor-pointer disabled:opacity-50 shadow-md shadow-indigo-100 flex items-center justify-center"
+                >
+                  <Send size={15} />
+                </button>
+              </form>
             </>
           ) : (
-            // Blank splash screen
-            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#f8f9fa] text-center font-sans">
-              <div className="max-w-md space-y-4">
-                <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto text-purple-650 shadow-inner">
-                  <MessageSquare size={32} />
-                </div>
-                <h3 className="text-lg font-black text-slate-800 uppercase tracking-widest">
-                  Pallywear Inbox
-                </h3>
-                <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto font-medium">
-                  Send and receive direct messages with designers, staff, and team members. Direct channels will show up in the side feed.
-                </p>
-                <div className="flex justify-center gap-2 pt-2">
-                  <span className="px-3 py-1 bg-purple-50 border border-purple-100 rounded-full text-[10px] font-black text-purple-700 uppercase tracking-wider">
-                    WhatsApp Chat Mode
-                  </span>
-                  <span className="px-3 py-1 bg-green-50 border border-green-100 rounded-full text-[10px] font-black text-green-700 uppercase tracking-wider">
-                    Secure local Sync
-                  </span>
-                </div>
+            // BLANK splash screen
+            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#f8f9fa] text-center border-l border-slate-100">
+              <div className="w-20 h-20 bg-indigo-50 rounded-3xl flex items-center justify-center text-indigo-650 mb-6 shadow-inner border border-indigo-100/50">
+                <MessageSquare size={36} className="stroke-[1.5]" />
               </div>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">Pallywear Workspace Chat</h3>
+              <p className="text-slate-500 text-xs mt-2 max-w-sm mx-auto font-medium leading-relaxed">
+                Send invites to active users by their email addresses. Create group discussions, share design reference attachments, and sync your logs.
+              </p>
             </div>
           )}
         </div>
+
       </motion.div>
 
-      {/* Popover overlay for zoom viewing */}
+      {/* INVITE DIRECT CHAT MODAL */}
       <AnimatePresence>
-        {viewImage && (
-          <ImageViewer
-            src={viewImage}
-            onClose={() => setViewImage(null)}
-            fileName="pallywear_hd_artwork"
-          />
+        {showInviteModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white w-full max-w-md rounded-3xl shadow-xl overflow-hidden border border-slate-100 text-left"
+            >
+              <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-650 flex items-center justify-center">
+                    <Mail size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Start Chat / Invite</h3>
+                    <p className="text-[10px] text-slate-450 font-medium">Invite a member by entering their email address</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowInviteModal(false); setInviteEmail(''); }}
+                  className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSendInvite} className="p-6 space-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="e.g. designer@pallywear.com"
+                    className="border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50/40"
+                  />
+                  <span className="text-[9px] text-slate-400 font-medium block">
+                    You can select from active registered users:
+                  </span>
+                  <select
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="">Select registered staff...</option>
+                    {registeredUsers
+                      .filter(u => u.email.toLowerCase() !== currentUserEmail.toLowerCase())
+                      .map(u => (
+                        <option key={u.id} value={u.email}>{u.name} ({u.role?.toUpperCase()})</option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => { setShowInviteModal(false); setInviteEmail(''); }}
+                    className="px-4 py-2 border border-slate-250 text-slate-650 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSendingAction}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
+                  >
+                    {isSendingAction ? 'Inviting...' : 'Send Invitation'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
+
+      {/* CREATE GROUP CHAT MODAL */}
+      <AnimatePresence>
+        {showGroupModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white w-full max-w-md rounded-3xl shadow-xl overflow-hidden border border-slate-100 text-left"
+            >
+              <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-650 flex items-center justify-center">
+                    <Users size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Create Group Chat</h3>
+                    <p className="text-[10px] text-slate-450 font-medium">Create a team thread with multiple staff members</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowGroupModal(false)}
+                  className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateGroup} className="p-6 space-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Group Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder="e.g. Sales Department"
+                    className="border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50/40"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Add Registered Staff</label>
+                  <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50/40 divide-y divide-slate-100">
+                    {registeredUsers
+                      .filter(u => u.email.toLowerCase() !== currentUserEmail.toLowerCase())
+                      .map(u => {
+                        const isChecked = selectedGroupParticipants.includes(u.id);
+                        return (
+                          <label key={u.id} className="flex items-center gap-2 py-1.5 px-1 cursor-pointer hover:bg-white/60 rounded">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                if (isChecked) {
+                                  setSelectedGroupParticipants(prev => prev.filter(id => id !== u.id));
+                                } else {
+                                  setSelectedGroupParticipants(prev => [...prev, u.id]);
+                                }
+                              }}
+                              className="rounded border-slate-300 text-indigo-650 focus:ring-indigo-500"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-800 leading-none">{u.name}</p>
+                              <p className="text-[9px] text-slate-400 mt-0.5">{u.role?.toUpperCase()}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Invite via Email (Comma-separated)</label>
+                  <input
+                    type="text"
+                    value={inviteGroupEmails}
+                    onChange={(e) => setInviteGroupEmails(e.target.value)}
+                    placeholder="e.g. marketing@pallywear.com, accounts@pallywear.com"
+                    className="border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50/40"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowGroupModal(false)}
+                    className="px-4 py-2 border border-slate-250 text-slate-650 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSendingAction}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
+                  >
+                    {isSendingAction ? 'Creating...' : 'Create Group'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* VIEW IMAGE ATTACHMENTS */}
+      {viewImage && (
+        <ImageViewer
+          imgSrc={viewImage}
+          onClose={() => setViewImage(null)}
+        />
+      )}
+
     </div>
   );
 }

@@ -25,15 +25,42 @@ import {
   Plus,
   AlertCircle,
   CheckCircle,
+  CheckCircle2,
   Activity,
   CreditCard,
   Filter,
   X,
+  ShoppingBag,
+  PauseCircle,
+  RefreshCw,
+  Download,
 } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { cn, isOrderSizeValid } from '../lib/utils';
 import FileUpload from './FileUpload';
 import ImageViewer from './ImageViewer';
+import { downloadOrderPDF } from '../lib/pdfHelper';
+
+const STATUS_COLORS: Record<string, string> = {
+  hold: 'bg-amber-50 text-amber-700 border-amber-200',
+  HOLD: 'bg-amber-50 text-amber-700 border-amber-200',
+  delivered: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  DELIVERED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  draft: 'bg-slate-100 text-slate-500 border-slate-200',
+  DRAFT: 'bg-slate-100 text-slate-500 border-slate-200',
+  pending: 'bg-blue-50 text-blue-700 border-blue-200',
+  PENDING: 'bg-blue-50 text-blue-700 border-blue-200',
+  accounts: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  ACCOUNTS: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  production: 'bg-purple-50 text-purple-700 border-purple-200',
+  PRODUCTION: 'bg-purple-50 text-purple-700 border-purple-200',
+  design: 'bg-pink-50 text-pink-700 border-pink-200',
+  DESIGN: 'bg-pink-50 text-pink-700 border-pink-200',
+  delivery: 'bg-orange-50 text-orange-700 border-orange-200',
+  DELIVERY: 'bg-orange-50 text-orange-700 border-orange-200',
+  order_management: 'bg-teal-50 text-teal-700 border-teal-200',
+  ORDER_MANAGEMENT: 'bg-teal-50 text-teal-700 border-teal-200',
+};
 
 interface AccountsDashboardProps {
   orders: Order[];
@@ -160,7 +187,8 @@ export default function AccountsDashboard({
   const [billingFiles, setBillingFiles] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderSearchTerm, setOrderSearchTerm] = useState('');
-  const [orderQueryFilter, setOrderQueryFilter] = useState<'total' | 'recent' | 'hold' | 'processed' | 'completed'>('total');
+  const [orderQueryFilter, setOrderQueryFilter] = useState<'awaiting' | 'total' | 'recent' | 'hold' | 'processed' | 'completed'>('recent');
+  const [selectedOrderCategory, setSelectedOrderCategory] = useState<'recent' | 'hold' | 'processed' | 'completed' | null>(null);
 
   const [expenses, setExpenses] = useState<LedgerEntry[]>(() => loadStoredArray('pw_accounts_expenses'));
   const [salaries, setSalaries] = useState<LedgerEntry[]>(() => loadStoredArray('pw_accounts_salaries'));
@@ -314,10 +342,15 @@ export default function AccountsDashboard({
 
     if (!matchesSearch) return false;
 
+    if (orderQueryFilter === 'awaiting') {
+      return order.status === OrderStatus.ACCOUNTS || (order.status === OrderStatus.HOLD && order.previousStatus === OrderStatus.ACCOUNTS);
+    }
     if (orderQueryFilter === 'total') return true;
     if (orderQueryFilter === 'hold') return order.status === OrderStatus.HOLD;
     if (orderQueryFilter === 'completed') return order.status === OrderStatus.DELIVERED;
-    if (orderQueryFilter === 'recent') return Date.now() - order.createdAt <= 7 * 24 * 60 * 60 * 1000;
+    if (orderQueryFilter === 'recent') {
+      return (order.status === OrderStatus.ACCOUNTS || order.status === OrderStatus.PENDING || order.status === OrderStatus.DRAFT) && Date.now() - order.createdAt <= 7 * 24 * 60 * 60 * 1000;
+    }
     if (orderQueryFilter === 'processed') {
       // Processed status represents any orders progress beyond accounts-wait but not completed yet
       return order.status !== OrderStatus.ACCOUNTS && order.status !== OrderStatus.DELIVERED && order.status !== OrderStatus.HOLD;
@@ -498,7 +531,8 @@ export default function AccountsDashboard({
       });
       setSelectedOrder(null);
       setBillingFiles([]);
-      alert('Order moved to Management Hub.');
+      setOrderQueryFilter('processed');
+      alert('Order moved to Order Management.');
     } finally {
       setIsProcessing(false);
     }
@@ -581,154 +615,229 @@ export default function AccountsDashboard({
       <main className="flex-1 p-8 overflow-y-auto">
         {activeSidebarTab === 'billing' && (
           <div className="space-y-6 animate-in fade-in duration-500">
-            <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-black text-slate-900">Accounts Dashboard</h2>
-                <p className="text-sm text-slate-500">Verify payments, upload invoices and send approved orders to production.</p>
-              </div>
-
-              <div className="flex flex-wrap gap-1 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm">
-                {[
-                  { id: 'total', label: 'Total Orders', icon: ClipboardCheck },
-                  { id: 'recent', label: 'Recent Orders', icon: Activity },
-                  { id: 'hold', label: 'Hold Orders', icon: AlertCircle },
-                  { id: 'processed', label: 'Processed Orders', icon: Coins },
-                  { id: 'completed', label: 'Completed Orders', icon: CheckCircle },
-                ].map((filter) => (
-                  <button
-                    key={filter.id}
-                    onClick={() => setOrderQueryFilter(filter.id as typeof orderQueryFilter)}
-                    className={cn(
-                      'flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all',
-                      orderQueryFilter === filter.id ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50',
-                    )}
-                  >
-                    <filter.icon size={12} />
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-            </header>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              <div className="lg:col-span-4 space-y-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Search orders..."
-                    className="w-full pl-10 pr-4 py-3 bg-white border border-slate-100 rounded-2xl text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={orderSearchTerm}
-                    onChange={(event) => setOrderSearchTerm(event.target.value)}
-                  />
+            {/* Welcome Banner */}
+            <div className="relative bg-gradient-to-r from-[#1A0B91] via-[#2d1ab8] to-[#4a2bd4] rounded-3xl p-6 md:p-8 overflow-hidden shadow-lg">
+              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 80% 50%, #ffffff 0%, transparent 60%)' }} />
+              <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1">Accounts Dashboard</p>
+                  <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">Billing & Verification</h2>
+                  <p className="text-white/70 text-sm mt-1 font-medium">Verify payments, upload invoices and send approved orders.</p>
                 </div>
-
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-                  {filteredOrders.length > 0 ? (
-                    filteredOrders.map((order) => (
-                      <button
-                        key={order.id}
-                        onClick={() => {
-                          setSelectedOrder(order);
-                          setBillingFiles(order.accountsAttachments || []);
-                        }}
-                        className={cn(
-                          'w-full text-left p-4 rounded-2xl border transition-all',
-                          selectedOrder?.id === order.id
-                            ? 'bg-indigo-600 border-indigo-600 shadow-lg shadow-indigo-100'
-                            : 'bg-white border-slate-100 hover:border-indigo-200',
-                        )}
-                      >
-                        <div className="flex justify-between items-start">
-                          <span className={cn('text-[10px] font-bold uppercase', selectedOrder?.id === order.id ? 'text-indigo-100' : 'text-slate-400')}>
-                            #{order.id.slice(-6)}
-                          </span>
-                          <span className="text-[10px] font-black text-emerald-500 px-2 py-0.5 bg-emerald-50 rounded-lg">
-                            {currency.format(order.financials?.totalAmount || 0)}
-                          </span>
-                        </div>
-                        <p className={cn('text-sm font-black mt-1', selectedOrder?.id === order.id ? 'text-white' : 'text-slate-900')}>
-                          {order.customerInfo.name}
-                        </p>
-                        <p className={cn('text-[11px] font-bold mt-1', selectedOrder?.id === order.id ? 'text-indigo-100' : 'text-slate-400')}>
-                          Balance {currency.format(order.financials?.balanceAmount || 0)}
-                        </p>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="bg-white border border-slate-100 rounded-2xl p-6 text-center">
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest">No matching orders</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="lg:col-span-8">
-                {selectedOrder ? (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
-                    <div className="p-8 bg-slate-50/50 border-b border-slate-100">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h3 className="text-xl font-black text-slate-900">Billing Verification</h3>
-                          <p className="text-xs font-bold text-slate-400 mt-1">
-                            {selectedOrder.customerInfo.name} - #{selectedOrder.id.slice(-6)}
-                          </p>
-                        </div>
-                        <span className="px-3 py-1 rounded-full bg-white border border-slate-100 text-[10px] font-black text-slate-500 uppercase">
-                          {selectedOrder.status}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4 mt-6">
-                        <div className="p-4 bg-white rounded-2xl border border-slate-100">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Balance Amount</p>
-                          <p className="text-xl font-black text-rose-500">{currency.format(selectedOrder.financials?.balanceAmount || 0)}</p>
-                        </div>
-                        <div className="p-4 bg-white rounded-2xl border border-slate-100">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Advance Paid</p>
-                          <p className="text-xl font-black text-emerald-500">{currency.format(selectedOrder.financials?.advancePay || 0)}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-8 space-y-6">
-                      {selectedOrder.accountsAttachments?.length ? (
-                        <div className="space-y-2">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Existing Attachments</p>
-                          <div className="flex flex-wrap gap-2">
-                            {selectedOrder.accountsAttachments.map((file, index) => (
-                              <button
-                                key={`${file}_${index}`}
-                                onClick={() => setViewingImage(file)}
-                                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-xs font-bold text-slate-600"
-                              >
-                                <FileText size={14} />
-                                Receipt {index + 1}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <FileUpload label="Upload Payment Proof / Invoice Copy" onFilesSelected={setBillingFiles} />
-
-                      <button
-                        onClick={handleProcessOrder}
-                        disabled={isProcessing || isAdmin === false}
-                        className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {isProcessing ? 'Processing...' : <>Confirm & Send to Production <ArrowUpRight size={16} /></>}
-                      </button>
-                    </div>
-                  </motion.div>
-                ) : (
-                  <div className="min-h-[520px] border-2 border-dashed border-slate-100 rounded-[32px] flex flex-col items-center justify-center text-slate-300">
-                    <ClipboardCheck size={48} className="mb-4 opacity-20" />
-                    <p className="font-bold text-sm uppercase tracking-widest">Select an order to verify billing</p>
-                  </div>
-                )}
               </div>
             </div>
+
+            {/* 4 Order Category Icons */}
+            <div className="grid grid-cols-4 gap-4 max-w-md">
+              {([
+                { key: 'recent' as const, label: 'Recent Orders', count: filteredOrders.filter(o => (o.status === OrderStatus.ACCOUNTS || o.status === OrderStatus.PENDING || o.status === OrderStatus.DRAFT) && Date.now() - o.createdAt <= 7 * 24 * 60 * 60 * 1000).length, icon: ShoppingBag, gradient: 'from-indigo-500 to-violet-600', light: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+                { key: 'hold' as const, label: 'Hold Orders', count: orders.filter(o => o.status === OrderStatus.HOLD).length, icon: PauseCircle, gradient: 'from-amber-500 to-orange-500', light: 'bg-amber-50 text-amber-700 border-amber-100' },
+                { key: 'processed' as const, label: 'Processed Orders', count: orders.filter(o => o.status !== OrderStatus.ACCOUNTS && o.status !== OrderStatus.DELIVERED && o.status !== OrderStatus.HOLD && o.status !== OrderStatus.PENDING && o.status !== OrderStatus.DRAFT).length, icon: RefreshCw, gradient: 'from-blue-500 to-cyan-500', light: 'bg-blue-50 text-blue-700 border-blue-100' },
+                { key: 'completed' as const, label: 'Completed', count: completedOrders.length, icon: CheckCircle2, gradient: 'from-emerald-500 to-teal-500', light: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+              ]).map(cat => {
+                const Icon = cat.icon;
+                const isOpen = selectedOrderCategory === cat.key;
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedOrderCategory(isOpen ? null : cat.key);
+                      setOrderQueryFilter(cat.key);
+                    }}
+                    className={cn(
+                      'aspect-square rounded-2xl flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm border outline-none relative group',
+                      isOpen
+                        ? `bg-gradient-to-br ${cat.gradient} border-transparent text-white shadow-lg`
+                        : 'bg-white border-slate-200 hover:border-slate-300'
+                    )}
+                    title={`View ${cat.label}`}
+                  >
+                    <div className={cn(
+                      'w-10 h-10 rounded-xl flex items-center justify-center transition-all',
+                      isOpen ? 'bg-white/20 text-white' : cat.light
+                    )}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+
+                    {/* Badge showing count */}
+                    {cat.count > 0 && (
+                      <span className={cn(
+                        'absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border shadow-sm',
+                        isOpen ? 'bg-white text-slate-900 border-white' : 'bg-red-500 text-white border-red-500'
+                      )}>
+                        {cat.count}
+                      </span>
+                    )}
+
+                    {/* Tooltip */}
+                    <span className="absolute bottom-[-32px] left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-10">
+                      {cat.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Order Table (drawer) */}
+            {selectedOrderCategory && (() => {
+              const catOrders = selectedOrderCategory === 'recent'
+                ? orders.filter(o => (o.status === OrderStatus.ACCOUNTS || o.status === OrderStatus.PENDING || o.status === OrderStatus.DRAFT) && Date.now() - o.createdAt <= 7 * 24 * 60 * 60 * 1000)
+                : selectedOrderCategory === 'hold'
+                  ? orders.filter(o => o.status === OrderStatus.HOLD)
+                  : selectedOrderCategory === 'processed'
+                    ? orders.filter(o => o.status !== OrderStatus.ACCOUNTS && o.status !== OrderStatus.DELIVERED && o.status !== OrderStatus.HOLD && o.status !== OrderStatus.PENDING && o.status !== OrderStatus.DRAFT)
+                    : completedOrders;
+              const titles = { recent: 'Recent Orders', hold: 'On Hold', processed: 'Processed Orders', completed: 'Completed' };
+              return (
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900">{titles[selectedOrderCategory]}</h3>
+                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">{catOrders.length} orders found</p>
+                    </div>
+                    <button onClick={() => setSelectedOrderCategory(null)} className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 transition-colors">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 text-slate-400 font-bold text-[9px] uppercase tracking-widest border-b border-slate-100">
+                        <tr>
+                          <th className="px-6 py-3">Order</th>
+                          <th className="px-6 py-3">Customer</th>
+                          <th className="px-6 py-3">Category</th>
+                          <th className="px-6 py-3">Qty</th>
+                          <th className="px-6 py-3">Status</th>
+                          <th className="px-6 py-3">Actions</th>
+                          <th className="px-6 py-3">Date</th>
+                          <th className="px-6 py-3">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50 text-xs">
+                        {catOrders.length === 0 ? (
+                          <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-400 italic">No orders in this category.</td></tr>
+                        ) : catOrders.slice(0, 15).map(o => (
+                          <tr
+                            key={o.id}
+                            onClick={() => {
+                              if (selectedOrderCategory === 'recent' || selectedOrderCategory === 'hold') {
+                                setSelectedOrder(o);
+                                setBillingFiles(o.accountsAttachments || []);
+                              }
+                            }}
+                            className={cn(
+                              "transition-colors",
+                              (selectedOrderCategory === 'recent' || selectedOrderCategory === 'hold') ? "hover:bg-slate-50/50 cursor-pointer" : "hover:bg-slate-50/30"
+                            )}
+                          >
+                            <td className="px-6 py-3.5 font-mono font-bold text-slate-700">#{o.id.slice(-7)}</td>
+                            <td className="px-6 py-3.5">
+                              <p className="font-bold text-slate-800 leading-none">{o.customerInfo.name}</p>
+                              <p className="text-[9px] text-slate-400 mt-0.5">{o.customerInfo.phone}</p>
+                            </td>
+                            <td className="px-6 py-3.5 text-slate-500 font-semibold">{o.category}</td>
+                            <td className="px-6 py-3.5 font-black text-slate-900">{o.quantity}</td>
+                            <td className="px-6 py-3.5">
+                              <span className={cn('px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border', STATUS_COLORS[o.status] || 'bg-slate-100 text-slate-500')}>
+                                {o.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-3.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {(o.status === OrderStatus.ACCOUNTS || o.status === OrderStatus.PENDING) && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleProcessOrder(); }}
+                                    className="bg-teal-50 hover:bg-teal-100 text-teal-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-teal-200 transition-colors cursor-pointer"
+                                  >
+                                    Send to Order Mgmt
+                                  </button>
+                                )}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); downloadOrderPDF(o); }}
+                                  className="bg-slate-50 hover:bg-slate-100 text-slate-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-slate-200 transition-colors cursor-pointer flex items-center gap-1"
+                                  title="Download PDF Order Sheet"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  PDF
+                                </button>
+                              </div>
+                            </td>
+                            <td className="px-6 py-3.5 text-slate-400">{new Date(o.createdAt).toLocaleDateString()}</td>
+                            <td className="px-6 py-3.5 font-black text-slate-900">₹{(o.financials?.totalAmount || 0).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Billing Verification Panel (shows when an order is selected from the table) */}
+            {selectedOrder && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
+                <div className="p-8 bg-slate-50/50 border-b border-slate-100">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900">Billing Verification</h3>
+                      <p className="text-xs font-bold text-slate-400 mt-1">
+                        {selectedOrder.customerInfo.name} - #{selectedOrder.id.slice(-6)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-full bg-white border border-slate-100 text-[10px] font-black text-slate-500 uppercase">
+                        {selectedOrder.status}
+                      </span>
+                      <button onClick={() => setSelectedOrder(null)} className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mt-6">
+                    <div className="p-4 bg-white rounded-2xl border border-slate-100">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Balance Amount</p>
+                      <p className="text-xl font-black text-rose-500">{currency.format(selectedOrder.financials?.balanceAmount || 0)}</p>
+                    </div>
+                    <div className="p-4 bg-white rounded-2xl border border-slate-100">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Advance Paid</p>
+                      <p className="text-xl font-black text-emerald-500">{currency.format(selectedOrder.financials?.advancePay || 0)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-8 space-y-6">
+                  {selectedOrder.accountsAttachments?.length ? (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Existing Attachments</p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedOrder.accountsAttachments.map((file, index) => (
+                          <button
+                            key={`${file}_${index}`}
+                            onClick={() => setViewingImage(file)}
+                            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-xs font-bold text-slate-600"
+                          >
+                            <FileText size={14} />
+                            Receipt {index + 1}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <FileUpload label="Upload Payment Proof / Invoice Copy" onFilesSelected={setBillingFiles} />
+
+                  <button
+                    onClick={handleProcessOrder}
+                    disabled={isProcessing}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isProcessing ? 'Processing...' : <>Confirm & Send to Order Management <ArrowUpRight size={16} /></>}
+                  </button>
+                </div>
+              </motion.div>
+            )}
           </div>
         )}
 

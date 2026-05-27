@@ -401,6 +401,64 @@ export async function downloadOrderPDF(order: Order) {
   doc.text('Thank you for choosing Pallywear. For query contact accounts@pallywear.com', pageWidth / 2, pageHeight - 12, { align: 'center' });
 
 
+  // --- ATTACHED IMAGES SECTION (Page 2 onwards) ---
+  if (order.staffImages && order.staffImages.length > 0) {
+    const loadedStaffImages = await Promise.all(
+      order.staffImages.map(imgUrl => loadImage(imgUrl))
+    );
+
+    const validImages = loadedStaffImages.filter((img): img is HTMLImageElement => img !== null);
+
+    if (validImages.length > 0) {
+      doc.addPage();
+      
+      doc.setFillColor(26, 11, 145);
+      doc.rect(margin, 15, pageWidth - (margin * 2), 8, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text('ATTACHED REFERENCE IMAGES', margin + 3, 20.5);
+
+      let imageY = 28;
+      
+      validImages.forEach((img, index) => {
+        const maxImgWidth = pageWidth - (margin * 2);
+        const maxImgHeight = 110;
+        
+        let imgWidth = img.width;
+        let imgHeight = img.height;
+        
+        const ratio = Math.min(maxImgWidth / imgWidth, maxImgHeight / imgHeight);
+        imgWidth = imgWidth * ratio;
+        imgHeight = imgHeight * ratio;
+        
+        if (imageY + imgHeight > pageHeight - margin) {
+          doc.addPage();
+          imageY = 20;
+        }
+        
+        doc.setDrawColor(220, 220, 220);
+        doc.rect(margin, imageY, imgWidth, imgHeight, 'S');
+        
+        let format = 'JPEG';
+        if (order.staffImages[index].startsWith('data:image/png')) {
+          format = 'PNG';
+        } else if (order.staffImages[index].startsWith('data:image/webp')) {
+          format = 'WEBP';
+        }
+        doc.addImage(img, format, margin, imageY, imgWidth, imgHeight);
+        
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`Attached Image ${index + 1} (${img.width}x${img.height})`, margin, imageY + imgHeight + 4);
+        
+        imageY += imgHeight + 12;
+      });
+    }
+  }
+
   // Launch Download Protocol
   doc.save(`Pallywear-Order-Sheet-${order.id.slice(-8).toUpperCase()}.pdf`);
 }

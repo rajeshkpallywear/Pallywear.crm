@@ -1,13 +1,16 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLeads } from '../context/LeadContext';
+import { motion, AnimatePresence } from 'motion/react';
+import { db } from '../lib/firebase';
+import { collection, onSnapshot, setDoc, deleteDoc, doc } from 'firebase/firestore';
 import {
   LayoutDashboard, Bell, Settings, BarChart3, Package,
   Users, LogOut, TrendingUp, Activity, Download, ShieldCheck,
   ChevronLeft, ChevronRight, Menu, Plus, MessageSquare, X, Check,
   Calendar, Search, ArrowUpRight, ArrowDownRight, Clock, Zap,
   ShoppingBag, CheckCircle2, PauseCircle, RefreshCw, DollarSign, Palette,
-  Factory, Truck
+  Factory, Truck, ClipboardCheck, FolderOpen
 } from 'lucide-react';
 import {
   ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -22,6 +25,7 @@ import InventoryManagement from '../components/InventoryManagement';
 import Logo from '../components/Logo';
 import { cn } from '../lib/utils';
 import { UserRole, Order } from '../types';
+import { downloadOrderPDF } from '../lib/pdfHelper';
 
 import AccountsDashboard from '../components/AccountsDashboard';
 import OrderManagementDashboard from '../components/OrderManagementDashboard';
@@ -32,6 +36,9 @@ import DesignDashboard from '../components/DesignDashboard';
 import DigitizingDashboard from '../components/DigitizingDashboard';
 import DigitizerCommunication from '../components/DigitizerCommunication';
 import ConversationDashboard from '../components/ConversationDashboard';
+import OrderDetailModal from '../components/OrderDetailModal';
+import TelecallerDashboard from '../components/TelecallerDashboard';
+import LeadAssignment from '../components/LeadAssignment';
 
 interface AppNotification {
   id: string;
@@ -59,16 +66,35 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const isSidebarCollapsed = true;
   const { leads, orders, inventory, addOrder, updateOrder, deleteOrder } = useLeads();
+
+  const myOrders = React.useMemo(() => {
+    const role = user?.role;
+    const isStaffOrDept = [
+      'admin', UserRole.ADMIN,
+      'staff', UserRole.STAFF,
+      'accounts', UserRole.ACCOUNTS,
+      'designer', UserRole.DESIGNER,
+      'digitizer', UserRole.DIGITIZER,
+      'production', UserRole.PRODUCTION,
+      'delivery', UserRole.DELIVERY,
+      'order_management', UserRole.ORDER_MANAGEMENT,
+      'telecaller', UserRole.TELECALLER
+    ].includes(role as any);
+
+    if (isStaffOrDept) return orders;
+    return orders.filter(o => o.createdBy === user?.id);
+  }, [orders, user]);
   const navigate = useNavigate();
   const [showProfileModal, setShowProfileModal] = React.useState(false);
 
   const defaultTab = React.useMemo(() => {
     if (!user?.role) return 'dashboard';
     const role = user.role as string;
-    if (['admin', UserRole.ADMIN, 'marketing', UserRole.MARKETING, 'user', 'order_management', UserRole.ORDER_MANAGEMENT, 'production', UserRole.PRODUCTION, 'staff', UserRole.STAFF, 'delivery', UserRole.DELIVERY].includes(role)) return 'dashboard';
+    if (['admin', UserRole.ADMIN, 'marketing', UserRole.MARKETING, 'user', 'order_management', UserRole.ORDER_MANAGEMENT, 'production', UserRole.PRODUCTION, 'staff', UserRole.STAFF, 'delivery', UserRole.DELIVERY, 'telecaller', UserRole.TELECALLER].includes(role)) return 'dashboard';
     if ([UserRole.DIGITIZER, 'digitizer'].includes(role)) return 'dashboard';
-    if ([UserRole.DESIGNER, 'designer'].includes(role)) return 'design_channel';
+    if ([UserRole.DESIGNER, 'designer'].includes(role)) return 'design_staff_comm';
     if ([UserRole.ACCOUNTS, 'accounts'].includes(role)) return 'dashboard';
     return 'history';
   }, [user?.role]);
@@ -76,11 +102,73 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = React.useState<string>('dashboard');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [calendarMonth, setCalendarMonth] = React.useState(() => new Date());
+  
+  const [selectedLeaveDate, setSelectedLeaveDate] = React.useState<Date | null>(null);
+  const [showLeaveModal, setShowLeaveModal] = React.useState(false);
+  const [leaveType, setLeaveType] = React.useState<'half_day' | 'full_day' | 'hours_permission'>('full_day');
+  const [permissionHours, setPermissionHours] = React.useState('2');
+  const [isSavingLeave, setIsSavingLeave] = React.useState(false);
+  const [leavesList, setLeavesList] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(collection(db, 'leaves'), (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLeavesList(list);
+    }, (error) => {
+      console.error("Firestore leaves subscription error:", error);
+    });
+    return () => unsub();
+  }, [user]);
+
+  const handleSaveLeave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLeaveDate || !user) return;
+
+    setIsSavingLeave(true);
+    try {
+      const yyyy = selectedLeaveDate.getFullYear();
+      const mm = String(selectedLeaveDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(selectedLeaveDate.getDate()).padStart(2, '0');
+      const dateString = `${yyyy}-${mm}-${dd}`;
+      const docId = `${user.id}_${dateString}_${Date.now()}`;
+      
+      const newLeave = {
+        id: docId,
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        date: dateString,
+        type: leaveType,
+        permissionHours: leaveType === 'hours_permission' ? parseInt(permissionHours, 10) || 1 : null,
+        createdAt: Date.now()
+      };
+
+      await setDoc(doc(db, 'leaves', docId), newLeave);
+      setShowLeaveModal(false);
+      setSelectedLeaveDate(null);
+    } catch (err) {
+      console.error("Failed to save leave:", err);
+      alert("Failed to save leave request.");
+    } finally {
+      setIsSavingLeave(false);
+    }
+  };
+
+  const handleDeleteLeave = async (leaveId: string) => {
+    try {
+      await deleteDoc(doc(db, 'leaves', leaveId));
+    } catch (err) {
+      console.error("Failed to delete leave:", err);
+      alert("Failed to delete leave.");
+    }
+  };
   const [graphPeriod, setGraphPeriod] = React.useState<'today' | 'week' | 'month'>('week');
-  const [selectedOrderCategory, setSelectedOrderCategory] = React.useState<'all' | 'recent' | 'create_order' | 'hold' | 'process' | 'completed' | null>(null);
+  const [selectedOrderCategory, setSelectedOrderCategory] = React.useState<'all' | 'recent' | 'create_order' | 'hold' | 'process' | 'completed' | null>('recent');
   const [isMobileOpen, setIsMobileOpen] = React.useState(false);
   const [isInboxOpen, setIsInboxOpen] = React.useState(false);
   const [inboxSelectedId, setInboxSelectedId] = React.useState<string | null>(null);
+  const [selectedDetailOrder, setSelectedDetailOrder] = React.useState<Order | null>(null);
 
   // Notifications State & Sound Chime
   const [showNotifications, setShowNotifications] = React.useState(false);
@@ -117,25 +205,25 @@ export default function Dashboard() {
       const osc1 = audioCtx.createOscillator();
       const osc2 = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
-      
+
       osc1.type = 'sine';
       osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
       osc1.frequency.exponentialRampToValueAtTime(880.00, audioCtx.currentTime + 0.1); // A5
-      
+
       osc2.type = 'triangle';
       osc2.frequency.setValueAtTime(293.66, audioCtx.currentTime); // D4
       osc2.frequency.exponentialRampToValueAtTime(440.00, audioCtx.currentTime + 0.1); // A4
-      
+
       gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-      
+
       osc1.connect(gainNode);
       osc2.connect(gainNode);
       gainNode.connect(audioCtx.destination);
-      
+
       osc1.start();
       osc2.start();
-      
+
       osc1.stop(audioCtx.currentTime + 0.45);
       osc2.stop(audioCtx.currentTime + 0.45);
     } catch (e) {
@@ -144,10 +232,10 @@ export default function Dashboard() {
   }, []);
 
   // Listen to new orders and simulate periodic incoming message notifications
-  const prevOrdersCount = React.useRef(orders.length);
+  const prevOrdersCount = React.useRef(myOrders.length);
   React.useEffect(() => {
-    if (orders.length > prevOrdersCount.current) {
-      const newOrder = orders[0];
+    if (myOrders.length > prevOrdersCount.current) {
+      const newOrder = myOrders[0];
       if (newOrder) {
         setNotifications(prev => [
           {
@@ -163,8 +251,8 @@ export default function Dashboard() {
         playNotificationSound();
       }
     }
-    prevOrdersCount.current = orders.length;
-  }, [orders, playNotificationSound]);
+    prevOrdersCount.current = myOrders.length;
+  }, [myOrders, playNotificationSound]);
 
   React.useEffect(() => {
     const messages = [
@@ -172,7 +260,7 @@ export default function Dashboard() {
       { title: 'Artwork Approved', message: 'Client Priya approved design mockup for order #ORD-44B' },
       { title: 'New Message from Arun', message: 'Ready to send design file to digitizer desk.' },
     ];
-    
+
     let msgIndex = 0;
     const interval = setInterval(() => {
       const msg = messages[msgIndex % messages.length];
@@ -190,7 +278,7 @@ export default function Dashboard() {
       playNotificationSound();
       msgIndex++;
     }, 45000); // every 45 seconds
-    
+
     return () => clearInterval(interval);
   }, [playNotificationSound]);
 
@@ -229,8 +317,8 @@ export default function Dashboard() {
   const query = searchQuery.toLowerCase().trim();
 
   const filteredOrders = React.useMemo(() => {
-    if (!query) return orders;
-    return orders.filter(o => {
+    if (!query) return myOrders;
+    return myOrders.filter(o => {
       const name = o.customerInfo?.name?.toLowerCase() || '';
       const phone = o.customerInfo?.phone?.toLowerCase() || '';
       const id = o.id?.toLowerCase() || '';
@@ -238,7 +326,7 @@ export default function Dashboard() {
       const status = o.status?.toLowerCase() || '';
       return name.includes(query) || phone.includes(query) || id.includes(query) || cat.includes(query) || status.includes(query);
     });
-  }, [orders, query]);
+  }, [myOrders, query]);
 
   const filteredLeads = React.useMemo(() => {
     const baseLeads = user?.role === 'admin' ? leads : leads.filter(l => l.createdBy === user?.id);
@@ -268,6 +356,7 @@ export default function Dashboard() {
     const isOrderMgmt = ['order_management', UserRole.ORDER_MANAGEMENT].includes(role as any);
     const isProduction = ['production', 'staff', UserRole.PRODUCTION, UserRole.STAFF].includes(role as any);
     const isDelivery = ['delivery', UserRole.DELIVERY].includes(role as any);
+    const isTelecaller = ['telecaller', UserRole.TELECALLER].includes(role as any);
     const showOps = ['admin', 'order_management', UserRole.ADMIN, UserRole.ORDER_MANAGEMENT].includes(role as any);
 
     const groups: { title: string; items: { id: string; label: string; icon: any; action?: () => void }[] }[] = [];
@@ -288,6 +377,22 @@ export default function Dashboard() {
           { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
           { id: 'calendar', label: 'Calendar', icon: Calendar },
           { id: 'analytics', label: 'Graph', icon: BarChart3 },
+        ]
+      });
+    } else if (isTelecaller) {
+      groups.push({
+        title: 'Main Desk',
+        items: [
+          { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+          { id: 'calendar', label: 'Intake Calendar', icon: Calendar },
+          { id: 'analytics', label: 'Performance Graph', icon: BarChart3 },
+        ]
+      });
+      groups.push({
+        title: 'Lead Desk',
+        items: [
+          { id: 'add_leads', label: 'Add Lead', icon: Plus },
+          { id: 'assign_leads', label: 'Assign Leads', icon: Users },
         ]
       });
     } else if (isOrderMgmt) {
@@ -313,6 +418,7 @@ export default function Dashboard() {
         items: [
           { id: 'clients', label: 'Clients', icon: Users },
           { id: 'invoices', label: 'Invoices', icon: DollarSign },
+          { id: 'marketing_orders', label: 'Create Order', icon: ShoppingBag },
           { id: 'add_leads', label: 'Add Leads', icon: Plus },
         ]
       });
@@ -327,7 +433,7 @@ export default function Dashboard() {
         title: 'Core Workflow',
         items: [
           { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-          { id: 'accounts_overview', label: 'Overview Board', icon: LayoutDashboard },
+          { id: 'accounts_billing', label: 'Accounts Dashboard', icon: ClipboardCheck },
           { id: 'accounts_calendar', label: 'Intake Calendar', icon: Calendar },
           { id: 'accounts_graph', label: 'Performance Graph', icon: BarChart3 },
         ]
@@ -341,17 +447,21 @@ export default function Dashboard() {
     }
 
     if (showOps) {
-      const items: { id: string; label: string; icon: any }[] = [];
-      items.push({ id: 'inventory', label: 'Inventory', icon: Package });
-      if (!isOrderMgmt) {
-        items.push({ id: 'history', label: 'Order History', icon: Activity });
-      }
-      if (['admin', UserRole.ADMIN].includes(role as any)) {
-        items.push({ id: 'digitizer_comm', label: 'Digitizer', icon: Zap });
-      }
       groups.push({
         title: 'Operations',
-        items
+        items: [{ id: 'inventory', label: 'Inventory', icon: Package }]
+      });
+    }
+
+    if (role === UserRole.DESIGNER || role === 'designer') {
+      groups.push({
+        title: 'Design Desk',
+        items: [
+          { id: 'design_staff_comm', label: 'Staff Conversation', icon: MessageSquare },
+          { id: 'design_om_comm', label: 'Order Management', icon: FolderOpen },
+          { id: 'calendar', label: 'Intake Calendar', icon: Calendar },
+          { id: 'analytics', label: 'Performance Graph', icon: BarChart3 },
+        ]
       });
     }
 
@@ -372,7 +482,7 @@ export default function Dashboard() {
   const completedOrders = filteredOrders.filter(o => ['delivered', 'DELIVERED'].includes(o.status));
   const processOrders = filteredOrders.filter(o => !['hold', 'HOLD', 'delivered', 'DELIVERED', 'draft', 'DRAFT', 'pending', 'PENDING'].includes(o.status));
   const now7 = Date.now();
-  const recentOrders = filteredOrders.filter(o => now7 - o.createdAt < 7 * 24 * 60 * 60 * 1000);
+  const recentOrders = filteredOrders.filter(o => ['pending', 'PENDING', 'draft', 'DRAFT'].includes(o.status) && now7 - o.createdAt < 7 * 24 * 60 * 60 * 1000);
 
   const hourOfDay = new Date().getHours();
   const greeting = hourOfDay < 12 ? 'Good morning' : hourOfDay < 17 ? 'Good afternoon' : 'Good evening';
@@ -381,17 +491,17 @@ export default function Dashboard() {
   return (
     <div className="flex bg-[#f0f2f5] min-h-screen text-slate-800 font-sans antialiased">
       {/* ===== SIDEBAR ===== */}
-      <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-100 shadow-sm sticky top-0 h-screen overflow-y-auto overflow-x-hidden flex-shrink-0">
-        {/* Logo Header */}
-        <div className="px-5 py-5 border-b border-slate-100 flex items-center gap-3">
-          <Logo className="h-8" />
-        </div>
-
+      <aside className={cn(
+        "hidden lg:flex flex-col bg-white border-r border-slate-100 shadow-sm sticky top-0 h-screen overflow-y-auto overflow-x-hidden flex-shrink-0 transition-all duration-300 no-scrollbar",
+        isSidebarCollapsed ? "w-20" : "w-64"
+      )}>
         {/* Nav Groups */}
-        <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto overflow-x-hidden no-scrollbar">
           {navGroups.map((group) => (
             <div key={group.title}>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] px-3 mb-2">{group.title}</p>
+              {!isSidebarCollapsed && (
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] px-3 mb-2">{group.title}</p>
+              )}
               <div className="space-y-0.5">
                 {group.items.map((item) => {
                   const Icon = item.icon;
@@ -402,17 +512,24 @@ export default function Dashboard() {
                       key={item.label}
                       onClick={() => item.action ? item.action() : selectTab(item.id as any)}
                       className={cn(
-                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left group',
+                        'w-full flex items-center rounded-xl text-xs font-semibold transition-all group relative',
+                        isSidebarCollapsed ? 'justify-center py-2.5 px-0' : 'gap-3 px-3 py-2.5 text-left',
                         isActive
                           ? 'bg-brand-primary text-white shadow-sm'
                           : isInbox
                             ? 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-100'
-                            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-55'
                       )}
                     >
                       <Icon className={cn('w-4 h-4 flex-shrink-0', isActive ? 'text-white' : '')} />
-                      <span>{item.label}</span>
-                      {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60" />}
+                      {!isSidebarCollapsed && <span>{item.label}</span>}
+                      {isActive && !isSidebarCollapsed && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60" />}
+
+                      {isSidebarCollapsed && (
+                        <div className="absolute left-20 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap shadow-md">
+                          {item.label}
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -421,20 +538,13 @@ export default function Dashboard() {
           ))}
         </nav>
 
-        {/* Sidebar Footer */}
-        <div className="p-3 border-t border-slate-100 space-y-1 bg-slate-50/60">
-          {user?.role === 'admin' && (
-            <button
-              onClick={() => navigate('/admin')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all text-left"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Admin Panel</span>
-            </button>
-          )}
+        <div className={cn("p-3 border-t border-slate-100 bg-slate-55/60", isSidebarCollapsed ? "space-y-3" : "space-y-1")}>
           <button
             onClick={() => setShowProfileModal(true)}
-            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-100 rounded-xl transition-all"
+            className={cn(
+              "w-full flex items-center rounded-xl transition-all hover:bg-slate-105 relative group",
+              isSidebarCollapsed ? "justify-center py-2 px-0" : "gap-3 px-3 py-2"
+            )}
           >
             <img
               src={user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=1A0B91&color=fff`}
@@ -442,17 +552,32 @@ export default function Dashboard() {
               alt="Me"
               referrerPolicy="no-referrer"
             />
-            <div className="text-left min-w-0 flex-1">
-              <p className="text-xs font-bold text-slate-800 truncate leading-none">{user?.name}</p>
-              <p className="text-[10px] text-slate-400 capitalize truncate mt-0.5">{userRoleDisplay}</p>
-            </div>
+            {!isSidebarCollapsed && (
+              <div className="text-left min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-800 truncate leading-none">{user?.name}</p>
+                <p className="text-[10px] text-slate-400 capitalize truncate mt-0.5">{userRoleDisplay}</p>
+              </div>
+            )}
+            {isSidebarCollapsed && (
+              <div className="absolute left-20 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap shadow-md">
+                Profile
+              </div>
+            )}
           </button>
           <button
             onClick={handleLogout}
-            className="w-full text-red-500 hover:bg-red-50 px-3 py-2.5 rounded-xl flex items-center gap-3 transition-colors text-xs font-semibold"
+            className={cn(
+              "w-full text-red-500 hover:bg-red-55 rounded-xl flex items-center transition-colors text-xs font-semibold relative group",
+              isSidebarCollapsed ? "justify-center py-2.5 px-0" : "gap-3 px-3 py-2.5 text-left"
+            )}
           >
             <LogOut className="w-4 h-4" />
-            <span>Sign Out</span>
+            {!isSidebarCollapsed && <span>Sign Out</span>}
+            {isSidebarCollapsed && (
+              <div className="absolute left-20 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap shadow-md">
+                Sign Out
+              </div>
+            )}
           </button>
         </div>
       </aside>
@@ -467,11 +592,8 @@ export default function Dashboard() {
             <button onClick={() => setIsMobileOpen(true)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 lg:hidden">
               <Menu className="w-5 h-5" />
             </button>
-            <div className="hidden md:block">
-              <h1 className="text-sm font-black text-slate-900 leading-none">
-                {greeting}, {user?.name?.split(' ')[0]} 👋
-              </h1>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{todayStr}</p>
+            <div className="hidden md:block flex items-center gap-3">
+              <Logo className="h-8" />
             </div>
           </div>
 
@@ -508,7 +630,7 @@ export default function Dashboard() {
 
             {/* Bell Notifications Dropdown */}
             <div className="relative">
-              <button 
+              <button
                 onClick={() => setShowNotifications(!showNotifications)}
                 className="relative p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors cursor-pointer"
               >
@@ -525,7 +647,7 @@ export default function Dashboard() {
                     <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                       <span className="text-xs font-black text-slate-900 uppercase tracking-wider">Notifications</span>
                       {notifications.filter(n => !n.read).length > 0 && (
-                        <button 
+                        <button
                           onClick={() => {
                             setNotifications(prev => prev.map(n => ({ ...n, read: true })));
                           }}
@@ -541,12 +663,12 @@ export default function Dashboard() {
                       ) : (
                         notifications.map(notif => {
                           const Icon = notif.type === 'order' ? Package : notif.type === 'message' ? MessageSquare : Users;
-                          const iconColor = notif.type === 'order' ? 'bg-indigo-50 text-indigo-650' 
-                            : notif.type === 'message' ? 'bg-purple-50 text-purple-650' 
-                            : 'bg-emerald-50 text-emerald-650';
+                          const iconColor = notif.type === 'order' ? 'bg-indigo-50 text-indigo-650'
+                            : notif.type === 'message' ? 'bg-purple-50 text-purple-650'
+                              : 'bg-emerald-50 text-emerald-650';
 
                           return (
-                            <div 
+                            <div
                               key={notif.id}
                               onClick={() => {
                                 setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
@@ -587,325 +709,419 @@ export default function Dashboard() {
         {/* Page Content */}
         <div className="flex-1 p-6 md:p-8">
           {/* ==================== OVERVIEW ==================== */}
-          {activeTab === 'dashboard' && (user?.role === 'admin' || user?.role === 'marketing' || user?.role === 'user' || user?.role === 'order_management' || user?.role === UserRole.ORDER_MANAGEMENT || user?.role === 'accounts' || user?.role === UserRole.ACCOUNTS || user?.role === 'production' || user?.role === UserRole.PRODUCTION || user?.role === 'staff' || user?.role === UserRole.STAFF || user?.role === 'delivery' || user?.role === UserRole.DELIVERY || !user?.role) ? (
-            <div className="space-y-6 animate-in fade-in duration-300">
-
-              {/* Welcome Banner */}
-              <div className="relative bg-gradient-to-r from-[#1A0B91] via-[#2d1ab8] to-[#4a2bd4] rounded-3xl p-6 md:p-8 overflow-hidden shadow-lg">
-                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 80% 50%, #ffffff 0%, transparent 60%)' }} />
-                <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
-                    <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1">Pallywear CRM</p>
-                    <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">{greeting}, {user?.name?.split(' ')[0]}!</h2>
-                    <p className="text-white/70 text-sm mt-1 font-medium">Here's your business snapshot for today.</p>
-                  </div>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setSelectedOrderCategory(selectedOrderCategory === 'all' ? null : 'all')}
-                      className={cn(
-                        "bg-white/10 hover:bg-white/20 backdrop-blur border rounded-2xl px-5 py-3 text-center transition-all cursor-pointer",
-                        selectedOrderCategory === 'all' ? "border-white bg-white/25 scale-[1.03]" : "border-white/20"
-                      )}
-                    >
-                      <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">Total Orders</p>
-                      <p className="text-2xl font-black text-white mt-0.5">{orders.length}</p>
-                    </button>
-                    <div className="bg-white/10 backdrop-blur border border-white/20 rounded-2xl px-5 py-3 text-center">
-                      <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">Revenue</p>
-                      <p className="text-2xl font-black text-white mt-0.5">₹{(totalOrderValue / 1000).toFixed(1)}k</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 4 Order Category Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {([
-                  showMarketing
-                    ? { key: 'create_order' as const, label: 'Create Orders', sublabel: 'Launch new order', count: '+' as any, icon: Plus, gradient: 'from-indigo-500 to-violet-600', light: 'bg-indigo-50 text-indigo-700 border-indigo-100', dot: 'bg-indigo-500', textColor: 'text-indigo-600' }
-                    : { key: 'recent' as const, label: 'Recent Orders', sublabel: 'Last 7 days', count: recentOrders.length as any, icon: ShoppingBag, gradient: 'from-indigo-500 to-violet-600', light: 'bg-indigo-50 text-indigo-700 border-indigo-100', dot: 'bg-indigo-500', textColor: 'text-indigo-600' },
-                  { key: 'hold' as const, label: 'Hold Orders', sublabel: 'Awaiting action', count: holdOrders.length as any, icon: PauseCircle, gradient: 'from-amber-500 to-orange-500', light: 'bg-amber-50 text-amber-700 border-amber-100', dot: 'bg-amber-500', textColor: 'text-amber-600' },
-                  { key: 'process' as const, label: 'In Process', sublabel: 'Active pipeline', count: processOrders.length as any, icon: RefreshCw, gradient: 'from-blue-500 to-cyan-500', light: 'bg-blue-50 text-blue-700 border-blue-100', dot: 'bg-blue-500', textColor: 'text-blue-600' },
-                  { key: 'completed' as const, label: 'Completed', sublabel: 'Delivered orders', count: completedOrders.length as any, icon: CheckCircle2, gradient: 'from-emerald-500 to-teal-500', light: 'bg-emerald-50 text-emerald-700 border-emerald-100', dot: 'bg-emerald-500', textColor: 'text-emerald-600' },
-                ]).map(cat => {
-                  const Icon = cat.icon;
-                  const isOpen = selectedOrderCategory === cat.key;
-                  return (
-                    <button
-                      key={cat.key}
-                      onClick={() => {
-                        if (cat.key === 'create_order') {
-                          setActiveTab('marketing_orders');
-                        } else {
-                          setSelectedOrderCategory(isOpen ? null : cat.key);
-                        }
-                      }}
-                      className={cn(
-                        'relative p-5 rounded-2xl border text-left transition-all group overflow-hidden',
-                        isOpen
-                          ? `bg-gradient-to-br ${cat.gradient} shadow-lg scale-[1.02] border-transparent`
-                          : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
-                      )}
-                    >
-                      <div className="flex items-start justify-between mb-4">
-                        <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center', isOpen ? 'bg-white/20' : cat.light.split(' ')[0])}>
-                          <Icon className={cn('w-5 h-5', isOpen ? 'text-white' : cat.textColor)} />
-                        </div>
-                        <ArrowUpRight className={cn('w-4 h-4 transition-opacity', isOpen ? 'text-white/60 opacity-100' : 'text-slate-300 opacity-0 group-hover:opacity-100')} />
-                      </div>
-                      <p className={cn('text-3xl font-black tracking-tight', isOpen ? 'text-white' : 'text-slate-900')}>{cat.count}</p>
-                      <p className={cn('text-xs font-bold mt-1', isOpen ? 'text-white' : 'text-slate-700')}>{cat.label}</p>
-                      <p className={cn('text-[10px] font-medium mt-0.5', isOpen ? 'text-white/60' : 'text-slate-400')}>{cat.sublabel}</p>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Order Detail Table (drawer) */}
-              {selectedOrderCategory && selectedOrderCategory !== 'create_order' && (() => {
-                const catOrders = selectedOrderCategory === 'all' ? filteredOrders
-                  : selectedOrderCategory === 'recent' ? recentOrders
-                    : selectedOrderCategory === 'hold' ? holdOrders
-                      : selectedOrderCategory === 'process' ? processOrders
-                        : completedOrders;
-                const titles = { all: 'All Orders', recent: 'Recent Orders', hold: 'On Hold', process: 'In Process', completed: 'Completed' };
+          {activeTab === 'dashboard' || ((user?.role === 'accounts' || user?.role === UserRole.ACCOUNTS) && (activeTab === 'accounts' || activeTab.startsWith('accounts_'))) ? (
+            (() => {
+              const role = user?.role;
+              if (role === 'accounts' || role === UserRole.ACCOUNTS) {
                 return (
-                  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                      <div>
-                        <h3 className="text-sm font-black text-slate-900">{titles[selectedOrderCategory]}</h3>
-                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">{catOrders.length} orders found</p>
-                      </div>
-                      <button onClick={() => setSelectedOrderCategory(null)} className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 transition-colors">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-50 text-slate-400 font-bold text-[9px] uppercase tracking-widest border-b border-slate-100">
-                          <tr>
-                            <th className="px-6 py-3">Order</th>
-                            <th className="px-6 py-3">Customer</th>
-                            <th className="px-6 py-3">Category</th>
-                            <th className="px-6 py-3">Qty</th>
-                            <th className="px-6 py-3">Status</th>
-                            <th className="px-6 py-3">Date</th>
-                            <th className="px-6 py-3">Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50 text-xs">
-                          {catOrders.length === 0 ? (
-                            <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic">No orders in this category.</td></tr>
-                          ) : catOrders.slice(0, 15).map(o => (
-                            <tr key={o.id} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-6 py-3.5 font-mono font-bold text-slate-700">#{o.id.slice(-7)}</td>
-                              <td className="px-6 py-3.5">
-                                <p className="font-bold text-slate-800 leading-none">{o.customerInfo.name}</p>
-                                <p className="text-[9px] text-slate-400 mt-0.5">{o.customerInfo.phone}</p>
-                              </td>
-                              <td className="px-6 py-3.5 text-slate-500 font-semibold">{o.category}</td>
-                              <td className="px-6 py-3.5 font-black text-slate-900">{o.quantity}</td>
-                              <td className="px-6 py-3.5">
-                                <span className={cn('px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border', STATUS_COLORS[o.status] || 'bg-slate-100 text-slate-500')}>
-                                  {o.status}
-                                </span>
-                              </td>
-                              <td className="px-6 py-3.5 text-slate-400">{new Date(o.createdAt).toLocaleDateString()}</td>
-                              <td className="px-6 py-3.5 font-black text-slate-900">₹{(o.financials?.totalAmount || 0).toLocaleString()}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                  <AccountsDashboard
+                    orders={orders}
+                    onUpdateOrder={handleUpdateOrder}
+                    isAdmin={user?.role === 'admin'}
+                    activeSubTab={activeTab === 'dashboard' ? 'overview' : (activeTab.replace('accounts_', '') as any)}
+                    onSubTabChange={(subTab) => setActiveTab(`accounts_${subTab}`)}
+                  />
                 );
-              })()}
+              }
+              if (role === 'order_management' || role === UserRole.ORDER_MANAGEMENT) {
+                return (
+                  <OrderManagementDashboard
+                    orders={orders}
+                    inventory={inventory}
+                    onUpdateOrder={handleUpdateOrder}
+                    onDeleteOrder={handleDeleteOrder}
+                    isAdmin={user?.role === 'admin'}
+                  />
+                );
+              }
+              if (role === 'production' || role === UserRole.PRODUCTION) {
+                return (
+                  <ProductionDashboard
+                    orders={orders}
+                    onUpdateOrder={handleUpdateOrder}
+                    onDeleteOrder={handleDeleteOrder}
+                    isAdmin={user?.role === 'admin'}
+                  />
+                );
+              }
+              if (role === 'delivery' || role === UserRole.DELIVERY) {
+                return (
+                  <DeliveryDashboard
+                    orders={orders}
+                    onUpdateOrder={handleUpdateOrder}
+                    onDeleteOrder={handleDeleteOrder}
+                    isAdmin={user?.role === 'admin'}
+                  />
+                );
+              }
+              if (role === 'designer' || role === UserRole.DESIGNER) {
+                return (
+                  <DesignDashboard
+                    orders={orders}
+                    onUpdateOrder={handleUpdateOrder}
+                    user={user}
+                    activeChannel={activeTab === 'design_om_comm' ? 'order_management' : 'staff'}
+                  />
+                );
+              }
+              if (role === 'digitizer' || role === UserRole.DIGITIZER) {
+                return <DigitizingDashboard orders={orders} onUpdateOrder={handleUpdateOrder} isAdmin={user?.role === 'admin'} />;
+              }
+              if (role === 'telecaller' || role === UserRole.TELECALLER) {
+                return <TelecallerDashboard />;
+              }
 
-              {/* Metrics + Pipeline Row */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Revenue Chart */}
-                <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900">Order Trend</h3>
-                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">Monthly order volume — last 6 months</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100">
-                      <ArrowUpRight className="w-3 h-3 text-emerald-600" />
-                      <span className="text-[10px] font-black text-emerald-700">Live</span>
-                    </div>
-                  </div>
-                  <div className="h-52">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={(() => {
-                        return Array.from({ length: 6 }, (_, i) => {
-                          const d = new Date(); d.setMonth(d.getMonth() - (5 - i));
-                          const month = d.getMonth(); const year = d.getFullYear();
-                          return {
-                            name: d.toLocaleDateString('en-US', { month: 'short' }),
-                            orders: orders.filter(o => { const od = new Date(o.createdAt); return od.getMonth() === month && od.getFullYear() === year; }).length,
-                            value: orders.filter(o => { const od = new Date(o.createdAt); return od.getMonth() === month && od.getFullYear() === year; }).reduce((s, o) => s + (o.financials?.totalAmount || 0), 0),
-                          };
-                        });
-                      })()}>
-                        <defs>
-                          <linearGradient id="orderGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
-                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} />
-                        <YAxis tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} allowDecimals={false} />
-                        <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 8px 30px rgba(0,0,0,0.08)', fontSize: 11 }} />
-                        <Area type="monotone" dataKey="orders" stroke="#6366f1" strokeWidth={2.5} fill="url(#orderGrad)" dot={{ fill: '#6366f1', r: 4, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} name="Orders" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+              return (
+                <div className="space-y-6 animate-in fade-in duration-300">
 
-                {/* Order Pipeline */}
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                  <div className="mb-5">
-                    <h3 className="text-sm font-black text-slate-900">Order Pipeline</h3>
-                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">Current status distribution</p>
+                  {/* Welcome Banner */}
+                  <div className="relative bg-gradient-to-r from-[#1A0B91] via-[#2d1ab8] to-[#4a2bd4] rounded-3xl p-6 md:p-8 overflow-hidden shadow-lg">
+                    <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 80% 50%, #ffffff 0%, transparent 60%)' }} />
+                    <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div>
+                        <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1">Pallywear CRM</p>
+                        <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">{greeting}, {user?.name?.split(' ')[0]}!</h2>
+                        <p className="text-white/70 text-sm mt-1 font-medium">Here's your business snapshot for today.</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-3">
-                    {[
-                      { label: 'Delivered', count: completedOrders.length, color: 'bg-emerald-500', light: 'bg-emerald-50 text-emerald-700' },
-                      { label: 'In Process', count: processOrders.length, color: 'bg-blue-500', light: 'bg-blue-50 text-blue-700' },
-                      { label: 'On Hold', count: holdOrders.length, color: 'bg-amber-500', light: 'bg-amber-50 text-amber-700' },
-                      { label: 'Draft/Pending', count: orders.filter(o => ['draft', 'DRAFT', 'pending', 'PENDING'].includes(o.status)).length, color: 'bg-slate-300', light: 'bg-slate-100 text-slate-600' },
-                    ].map(item => {
-                      const pct = orders.length > 0 ? Math.round((item.count / orders.length) * 100) : 0;
+
+                  {/* 4 Order Category Icons (Click to view details) */}
+                  <div className="grid grid-cols-4 gap-4 max-w-md">
+                    {([
+                      { key: 'recent' as const, label: 'Recent Orders', count: recentOrders.length as any, icon: ShoppingBag, gradient: 'from-indigo-500 to-violet-600', light: 'bg-indigo-50 text-indigo-700 border-indigo-100', textColor: 'text-indigo-600' },
+                      { key: 'hold' as const, label: 'Hold Orders', count: holdOrders.length as any, icon: PauseCircle, gradient: 'from-amber-500 to-orange-500', light: 'bg-amber-50 text-amber-700 border-amber-100', textColor: 'text-amber-600' },
+                      { key: 'process' as const, label: 'In Process', count: processOrders.length as any, icon: RefreshCw, gradient: 'from-blue-500 to-cyan-500', light: 'bg-blue-50 text-blue-700 border-blue-100', textColor: 'text-blue-650' },
+                      { key: 'completed' as const, label: 'Completed', count: completedOrders.length as any, icon: CheckCircle2, gradient: 'from-emerald-500 to-teal-500', light: 'bg-emerald-50 text-emerald-700 border-emerald-100', textColor: 'text-emerald-600' },
+                    ]).map(cat => {
+                      const Icon = cat.icon;
+                      const isOpen = selectedOrderCategory === cat.key;
                       return (
-                        <div key={item.label}>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-xs font-bold text-slate-700">{item.label}</span>
-                            <div className="flex items-center gap-2">
-                              <span className={cn('text-[9px] font-black px-2 py-0.5 rounded-full', item.light)}>{item.count}</span>
-                              <span className="text-[10px] text-slate-400 font-medium w-8 text-right">{pct}%</span>
-                            </div>
+                        <button
+                          key={cat.key}
+                          type="button"
+                          onClick={() => setSelectedOrderCategory(isOpen ? null : cat.key)}
+                          className={cn(
+                            'aspect-square rounded-2xl flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm border outline-none relative group',
+                            isOpen
+                              ? `bg-gradient-to-br ${cat.gradient} border-transparent text-white shadow-lg`
+                              : 'bg-white border-slate-200 hover:border-slate-300'
+                          )}
+                          title={`View ${cat.label}`}
+                        >
+                          <div className={cn(
+                            'w-10 h-10 rounded-xl flex items-center justify-center transition-all',
+                            isOpen ? 'bg-white/20 text-white' : cat.light
+                          )}>
+                            <Icon className="w-5 h-5" />
                           </div>
-                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                            <div className={cn('h-full rounded-full transition-all duration-500', item.color)} style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
+
+                          {/* Badge showing count if non-zero */}
+                          {cat.count > 0 && (
+                            <span className={cn(
+                              'absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border shadow-sm',
+                              isOpen ? 'bg-white text-slate-900 border-white' : 'bg-red-500 text-white border-red-500'
+                            )}>
+                              {cat.count}
+                            </span>
+                          )}
+
+                          {/* Tooltip to show category name */}
+                          <span className="absolute bottom-[-32px] left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-10">
+                            {cat.label}
+                          </span>
+                        </button>
                       );
                     })}
-                    <div className="pt-3 border-t border-slate-100 mt-4">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-600">Total Orders</span>
-                        <span className="font-black text-slate-900">{orders.length}</span>
+                  </div>
+
+                  {/* Order Detail Table (drawer) */}
+                  {selectedOrderCategory && selectedOrderCategory !== 'create_order' && (() => {
+                    const catOrders = selectedOrderCategory === 'all' ? filteredOrders
+                      : selectedOrderCategory === 'recent' ? recentOrders
+                        : selectedOrderCategory === 'hold' ? holdOrders
+                          : selectedOrderCategory === 'process' ? processOrders
+                            : completedOrders;
+                    const titles = { all: 'All Orders', recent: 'Recent Orders', hold: 'On Hold', process: 'In Process', completed: 'Completed' };
+                    return (
+                      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                          <div>
+                            <h3 className="text-sm font-black text-slate-900">{titles[selectedOrderCategory]}</h3>
+                            <p className="text-[10px] text-slate-400 font-medium mt-0.5">{catOrders.length} orders found</p>
+                          </div>
+                          <button onClick={() => setSelectedOrderCategory(null)} className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 transition-colors">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 text-slate-400 font-bold text-[9px] uppercase tracking-widest border-b border-slate-100">
+                              <tr>
+                                <th className="px-6 py-3">Order</th>
+                                <th className="px-6 py-3">Customer</th>
+                                <th className="px-6 py-3">Category</th>
+                                <th className="px-6 py-3">Qty</th>
+                                <th className="px-6 py-3">Status</th>
+                                <th className="px-6 py-3">Actions</th>
+                                <th className="px-6 py-3">Date</th>
+                                <th className="px-6 py-3">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50 text-xs">
+                              {catOrders.length === 0 ? (
+                                <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-400 italic">No orders in this category.</td></tr>
+                              ) : catOrders.slice(0, 15).map(o => (
+                                <tr
+                                  key={o.id}
+                                  onClick={() => {
+                                    if (selectedOrderCategory !== 'process') {
+                                      setSelectedDetailOrder(o);
+                                    }
+                                  }}
+                                  className={cn(
+                                    "transition-colors",
+                                    selectedOrderCategory === 'process' ? "hover:bg-slate-50/30" : "hover:bg-slate-50/50 cursor-pointer"
+                                  )}
+                                >
+                                  <td className="px-6 py-3.5 font-mono font-bold text-slate-700">#{o.id.slice(-7)}</td>
+                                  <td className="px-6 py-3.5">
+                                    <p className="font-bold text-slate-800 leading-none">{o.customerInfo.name}</p>
+                                    <p className="text-[9px] text-slate-400 mt-0.5">{o.customerInfo.phone}</p>
+                                  </td>
+                                  <td className="px-6 py-3.5 text-slate-500 font-semibold">{o.category}</td>
+                                  <td className="px-6 py-3.5 font-black text-slate-900">{o.quantity}</td>
+                                  <td className="px-6 py-3.5">
+                                    <span className={cn('px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border', STATUS_COLORS[o.status] || 'bg-slate-100 text-slate-500')}>
+                                      {o.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-3.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {['pending', 'hold', 'draft', 'PENDING', 'HOLD', 'DRAFT'].includes(o.status) && (
+                                        <>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); handleUpdateOrder(o.id, { status: 'design' as any }); }}
+                                            className="bg-pink-50 hover:bg-pink-100 text-pink-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-pink-200 transition-colors cursor-pointer"
+                                          >
+                                            Share to Designers
+                                          </button>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); handleUpdateOrder(o.id, { status: 'accounts' as any }); }}
+                                            className="bg-yellow-50 hover:bg-yellow-100 text-yellow-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-yellow-200 transition-colors cursor-pointer"
+                                          >
+                                            Move to Accounts
+                                          </button>
+                                        </>
+                                      )}
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); downloadOrderPDF(o); }}
+                                        className="bg-slate-50 hover:bg-slate-100 text-slate-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-slate-200 transition-colors cursor-pointer flex items-center gap-1"
+                                        title="Download PDF Order Sheet"
+                                      >
+                                        <Download className="w-3 h-3" />
+                                        PDF
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-3.5 text-slate-400">{new Date(o.createdAt).toLocaleDateString()}</td>
+                                  <td className="px-6 py-3.5 font-black text-slate-900">₹{(o.financials?.totalAmount || 0).toLocaleString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Metrics + Pipeline Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Revenue Chart */}
+                    <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+                      <div className="flex items-center justify-between mb-6">
+                        <div>
+                          <h3 className="text-sm font-black text-slate-900">Order Trend</h3>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">Monthly order volume — last 6 months</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100">
+                          <ArrowUpRight className="w-3 h-3 text-emerald-600" />
+                          <span className="text-[10px] font-black text-emerald-700">Live</span>
+                        </div>
+                      </div>
+                      <div className="h-52">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={(() => {
+                            return Array.from({ length: 6 }, (_, i) => {
+                              const d = new Date(); d.setMonth(d.getMonth() - (5 - i));
+                              const month = d.getMonth(); const year = d.getFullYear();
+                              return {
+                                name: d.toLocaleDateString('en-US', { month: 'short' }),
+                                orders: orders.filter(o => { const od = new Date(o.createdAt); return od.getMonth() === month && od.getFullYear() === year; }).length,
+                                value: orders.filter(o => { const od = new Date(o.createdAt); return od.getMonth() === month && od.getFullYear() === year; }).reduce((s, o) => s + (o.financials?.totalAmount || 0), 0),
+                              };
+                            });
+                          })()}>
+                            <defs>
+                              <linearGradient id="orderGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
+                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} />
+                            <YAxis tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} allowDecimals={false} />
+                            <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 8px 30px rgba(0,0,0,0.08)', fontSize: 11 }} />
+                            <Area type="monotone" dataKey="orders" stroke="#6366f1" strokeWidth={2.5} fill="url(#orderGrad)" dot={{ fill: '#6366f1', r: 4, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} name="Orders" />
+                          </AreaChart>
+                        </ResponsiveContainer>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Active Deals + Recent Activity */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Active Deals Table */}
-                <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900">Active Clients</h3>
-                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">High-priority leads in your pipeline</p>
-                    </div>
-                    <button onClick={() => selectTab('clients')} className="text-[10px] font-black text-brand-primary hover:text-brand-primary/70 uppercase tracking-wider flex items-center gap-1 transition">
-                      View all <ArrowUpRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-slate-50 text-[9px] text-slate-400 font-black uppercase tracking-widest border-b border-slate-100">
-                        <tr>
-                          <th className="px-6 py-3">Client</th>
-                          <th className="px-6 py-3">Company</th>
-                          <th className="px-6 py-3">Value</th>
-                          <th className="px-6 py-3">Type</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50 text-xs">
-                        {filteredLeads.slice(0, 5).map((l, i) => (
-                          <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="px-6 py-3.5">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-white font-black text-[10px] shadow-sm">
-                                  {l.name.charAt(0)}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-slate-800 leading-none">{l.name}</p>
-                                  <p className="text-[9px] text-slate-400 mt-0.5 truncate max-w-[100px]">{(l as any).email || ''}</p>
+                    {/* Order Pipeline */}
+                    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+                      <div className="mb-5">
+                        <h3 className="text-sm font-black text-slate-900">Order Pipeline</h3>
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">Current status distribution</p>
+                      </div>
+                      <div className="space-y-3">
+                        {[
+                          { label: 'Delivered', count: completedOrders.length, color: 'bg-emerald-500', light: 'bg-emerald-50 text-emerald-700' },
+                          { label: 'In Process', count: processOrders.length, color: 'bg-blue-500', light: 'bg-blue-50 text-blue-700' },
+                          { label: 'On Hold', count: holdOrders.length, color: 'bg-amber-500', light: 'bg-amber-50 text-amber-700' },
+                          { label: 'Draft/Pending', count: myOrders.filter(o => ['draft', 'DRAFT', 'pending', 'PENDING'].includes(o.status)).length, color: 'bg-slate-300', light: 'bg-slate-100 text-slate-600' },
+                        ].map(item => {
+                          const pct = myOrders.length > 0 ? Math.round((item.count / myOrders.length) * 100) : 0;
+                          return (
+                            <div key={item.label}>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-xs font-bold text-slate-700">{item.label}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className={cn('text-[9px] font-black px-2 py-0.5 rounded-full', item.light)}>{item.count}</span>
+                                  <span className="text-[10px] text-slate-400 font-medium w-8 text-right">{pct}%</span>
                                 </div>
                               </div>
-                            </td>
-                            <td className="px-6 py-3.5 text-slate-500 font-medium">{l.companyName}</td>
-                            <td className="px-6 py-3.5 font-black text-slate-900">₹{l.totalOrderValue.toLocaleString()}</td>
-                            <td className="px-6 py-3.5">
-                              <span className={cn('px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border',
-                                l.leadType === 'Hot' ? 'bg-red-50 text-red-700 border-red-100' :
-                                  l.leadType === 'Warm' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                                    'bg-slate-100 text-slate-500 border-slate-200'
-                              )}>
-                                {l.leadType}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                        {filteredLeads.length === 0 && (
-                          <tr><td colSpan={4} className="px-6 py-10 text-center text-slate-400 italic">No active clients yet.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Recent Orders Activity Feed */}
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                  <div className="flex items-center justify-between mb-5">
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900">Recent Activity</h3>
-                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">Latest order updates</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-[9px] text-slate-400 font-bold uppercase">Live</span>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {orders.slice().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6).map(o => (
-                      <div key={o.id} className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                        <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-[10px] font-black',
-                          o.status === 'delivered' || o.status === 'DELIVERED' ? 'bg-emerald-100 text-emerald-700' :
-                            o.status === 'hold' || o.status === 'HOLD' ? 'bg-amber-100 text-amber-700' :
-                              'bg-blue-100 text-blue-700'
-                        )}>
-                          {o.customerInfo.name.charAt(0)}
+                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div className={cn('h-full rounded-full transition-all duration-500', item.color)} style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div className="pt-3 border-t border-slate-100 mt-4">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-slate-600">Total Orders</span>
+                            <span className="font-black text-slate-900">{myOrders.length}</span>
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-slate-800 truncate">{o.customerInfo.name}</p>
-                          <p className="text-[9px] text-slate-400 mt-0.5">{o.category} · #{o.id.slice(-5)}</p>
-                        </div>
-                        <span className={cn('text-[8px] font-black px-2 py-0.5 rounded-full border flex-shrink-0', STATUS_COLORS[o.status] || 'bg-slate-100 text-slate-500')}>
-                          {o.status}
-                        </span>
                       </div>
-                    ))}
-                    {orders.length === 0 && <p className="text-center text-slate-400 italic text-xs py-6">No orders yet.</p>}
+                    </div>
+                  </div>
+
+                  {/* Active Deals + Recent Activity */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Active Deals Table */}
+                    <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+                        <div>
+                          <h3 className="text-sm font-black text-slate-900">Active Clients</h3>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">High-priority leads in your pipeline</p>
+                        </div>
+                        <button onClick={() => selectTab('clients')} className="text-[10px] font-black text-brand-primary hover:text-brand-primary/70 uppercase tracking-wider flex items-center gap-1 transition">
+                          View all <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                          <thead className="bg-slate-50 text-[9px] text-slate-400 font-black uppercase tracking-widest border-b border-slate-100">
+                            <tr>
+                              <th className="px-6 py-3">Client</th>
+                              <th className="px-6 py-3">Company</th>
+                              <th className="px-6 py-3">Value</th>
+                              <th className="px-6 py-3">Type</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50 text-xs">
+                            {filteredLeads.slice(0, 5).map((l, i) => (
+                              <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="px-6 py-3.5">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-white font-black text-[10px] shadow-sm">
+                                      {l.name.charAt(0)}
+                                    </div>
+                                    <div>
+                                      <p className="font-bold text-slate-800 leading-none">{l.name}</p>
+                                      <p className="text-[9px] text-slate-400 mt-0.5 truncate max-w-[100px]">{(l as any).email || ''}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-3.5 text-slate-500 font-medium">{l.companyName}</td>
+                                <td className="px-6 py-3.5 font-black text-slate-900">₹{l.totalOrderValue.toLocaleString()}</td>
+                                <td className="px-6 py-3.5">
+                                  <span className={cn('px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border',
+                                    l.leadType === 'Hot' ? 'bg-red-50 text-red-700 border-red-100' :
+                                      l.leadType === 'Warm' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                        'bg-slate-100 text-slate-500 border-slate-200'
+                                  )}>
+                                    {l.leadType}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {filteredLeads.length === 0 && (
+                              <tr><td colSpan={4} className="px-6 py-10 text-center text-slate-400 italic">No active clients yet.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Recent Orders Activity Feed */}
+                    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+                      <div className="flex items-center justify-between mb-5">
+                        <div>
+                          <h3 className="text-sm font-black text-slate-900">Recent Activity</h3>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">Latest order updates</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          <span className="text-[9px] text-slate-400 font-bold uppercase">Live</span>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {myOrders.slice().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6).map(o => (
+                          <div key={o.id} onClick={() => setSelectedDetailOrder(o)} className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors">
+                            <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-[10px] font-black',
+                              o.status === 'delivered' || o.status === 'DELIVERED' ? 'bg-emerald-100 text-emerald-700' :
+                                o.status === 'hold' || o.status === 'HOLD' ? 'bg-amber-105 text-amber-700' :
+                                  'bg-blue-100 text-blue-700'
+                            )}>
+                              {o.customerInfo.name.charAt(0)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-slate-800 truncate">{o.customerInfo.name}</p>
+                              <p className="text-[9px] text-slate-400 mt-0.5">{o.category} · #{o.id.slice(-5)}</p>
+                            </div>
+                            <span className={cn('text-[8px] font-black px-2 py-0.5 rounded-full border flex-shrink-0', STATUS_COLORS[o.status] || 'bg-slate-100 text-slate-550')}>
+                              {o.status}
+                            </span>
+                          </div>
+                        ))}
+                        {myOrders.length === 0 && <p className="text-center text-slate-400 italic text-xs py-6">No orders yet.</p>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lead Manager */}
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+                    <div className="mb-4">
+                      <h3 className="text-sm font-black text-slate-900">Lead Management</h3>
+                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">Manage, qualify, and convert your leads</p>
+                    </div>
+                    <LeadManager />
                   </div>
                 </div>
-              </div>
-
-              {/* Lead Manager */}
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                <div className="mb-4">
-                  <h3 className="text-sm font-black text-slate-900">Lead Management</h3>
-                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">Manage, qualify, and convert your leads</p>
-                </div>
-                <LeadManager />
-              </div>
-            </div>
+              );
+            })()
 
             /* ==================== CALENDAR ==================== */
           ) : activeTab === 'calendar' ? (
@@ -943,20 +1159,71 @@ export default function Dashboard() {
                   for (let i = 0; i < firstDay; i++) cells.push(<div key={`blank-${i}`} className="h-28 border-b border-r border-slate-50 bg-slate-50/30" />);
                   for (let d = 1; d <= daysInMonth; d++) {
                     const dayDate = new Date(year, month, d);
-                    const dayOrders = orders.filter(o => {
+                    const yyyy = dayDate.getFullYear();
+                    const mm = String(dayDate.getMonth() + 1).padStart(2, '0');
+                    const dd = String(dayDate.getDate()).padStart(2, '0');
+                    const dayDateString = `${yyyy}-${mm}-${dd}`;
+                    
+                    const dayOrders = myOrders.filter(o => {
                       const oDate = new Date(o.createdAt);
                       return oDate.getFullYear() === year && oDate.getMonth() === month && oDate.getDate() === d;
                     });
+                    
+                    const dayLeaves = leavesList.filter(l => l.date === dayDateString);
                     const isToday = new Date().toDateString() === dayDate.toDateString();
+                    
                     cells.push(
-                      <div key={d} className={cn('h-28 p-2 border-b border-r border-slate-50 flex flex-col gap-1 overflow-hidden transition-colors', isToday ? 'bg-indigo-50' : 'hover:bg-slate-50/60')}>
-                        <span className={cn('text-xs font-black self-start w-7 h-7 flex items-center justify-center rounded-full', isToday ? 'bg-brand-primary text-white shadow-sm' : 'text-slate-500')}>{d}</span>
-                        {dayOrders.slice(0, 3).map(o => (
-                          <div key={o.id} className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 truncate border border-indigo-100">
+                      <div 
+                        key={d} 
+                        onClick={() => {
+                          setSelectedLeaveDate(dayDate);
+                          setLeaveType('full_day');
+                          setPermissionHours('2');
+                          setShowLeaveModal(true);
+                        }}
+                        className={cn('h-28 p-2 border-b border-r border-slate-50 flex flex-col gap-1 overflow-hidden transition-colors cursor-pointer', isToday ? 'bg-indigo-50' : 'hover:bg-slate-50/60')}
+                      >
+                        <div className="flex justify-between items-center w-full">
+                          <span className={cn('text-xs font-black w-6 h-6 flex items-center justify-center rounded-full', isToday ? 'bg-brand-primary text-white shadow-sm' : 'text-slate-500')}>{d}</span>
+                        </div>
+
+                        {/* Leave Logs list */}
+                        {dayLeaves.map(l => {
+                          let label = '';
+                          let colorClass = '';
+                          if (l.type === 'full_day') {
+                            label = `Full Day (${l.userName})`;
+                            colorClass = 'bg-rose-50 text-rose-700 border-rose-100';
+                          } else if (l.type === 'half_day') {
+                            label = `Half Day (${l.userName})`;
+                            colorClass = 'bg-amber-50 text-amber-700 border-amber-100';
+                          } else {
+                            label = `Perm: ${l.permissionHours}h (${l.userName})`;
+                            colorClass = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+                          }
+                          return (
+                            <div 
+                              key={l.id} 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Delete this leave log for ${l.userName}?`)) {
+                                  handleDeleteLeave(l.id);
+                                }
+                              }}
+                              className={cn("text-[8px] font-black px-1.5 py-0.5 rounded-md truncate border cursor-pointer hover:opacity-80 transition-opacity", colorClass)}
+                              title={`${l.userName} (${l.userRole}) leave. Click to delete.`}
+                            >
+                              {l.userName ? label : 'Leave log'}
+                            </div>
+                          );
+                        })}
+
+                        {dayOrders.slice(0, 2).map(o => (
+                          <div key={o.id} onClick={(e) => { e.stopPropagation(); setSelectedDetailOrder(o); }} className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 truncate border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors">
                             #{o.id.slice(-4)} {o.customerInfo.name}
                           </div>
                         ))}
-                        {dayOrders.length > 3 && <span className="text-[8px] font-black text-slate-400">+{dayOrders.length - 3} more</span>}
+                        {dayOrders.length > 2 && <span className="text-[8px] font-black text-slate-400">+{dayOrders.length - 2} more</span>}
                       </div>
                     );
                   }
@@ -994,27 +1261,27 @@ export default function Dashboard() {
                 const weekStart = todayStart - 6 * 24 * 60 * 60 * 1000;
                 const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
                 const rangeStart = graphPeriod === 'today' ? todayStart : graphPeriod === 'week' ? weekStart : monthStart;
-                const periodOrders = orders.filter(o => o.createdAt >= rangeStart);
+                const periodOrders = myOrders.filter(o => o.createdAt >= rangeStart);
                 const prevStart = rangeStart - (rangeStart - (graphPeriod === 'today' ? todayStart - 86400000 : graphPeriod === 'week' ? weekStart - 7 * 86400000 : monthStart - 30 * 86400000));
 
                 let chartData: { name: string; orders: number; delivered: number; hold: number }[] = [];
                 if (graphPeriod === 'today') {
                   chartData = Array.from({ length: 12 }, (_, h) => {
                     const hour = h * 2;
-                    const hourOrders = orders.filter(o => { const d = new Date(o.createdAt); return d.getTime() >= todayStart && d.getHours() === hour; });
+                    const hourOrders = myOrders.filter(o => { const d = new Date(o.createdAt); return d.getTime() >= todayStart && d.getHours() === hour; });
                     return { name: `${hour}:00`, orders: hourOrders.length, delivered: hourOrders.filter(o => ['delivered', 'DELIVERED'].includes(o.status)).length, hold: hourOrders.filter(o => ['hold', 'HOLD'].includes(o.status)).length };
                   });
                 } else if (graphPeriod === 'week') {
                   chartData = Array.from({ length: 7 }, (_, i) => {
                     const ds = todayStart - (6 - i) * 86400000; const de = ds + 86400000;
-                    const dayOrders = orders.filter(o => o.createdAt >= ds && o.createdAt < de);
+                    const dayOrders = myOrders.filter(o => o.createdAt >= ds && o.createdAt < de);
                     return { name: new Date(ds).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }), orders: dayOrders.length, delivered: dayOrders.filter(o => ['delivered', 'DELIVERED'].includes(o.status)).length, hold: dayOrders.filter(o => ['hold', 'HOLD'].includes(o.status)).length };
                   });
                 } else {
                   const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
                   chartData = Array.from({ length: dim }, (_, i) => {
                     const ds = new Date(now.getFullYear(), now.getMonth(), i + 1).getTime(); const de = ds + 86400000;
-                    const dayOrders = orders.filter(o => o.createdAt >= ds && o.createdAt < de);
+                    const dayOrders = myOrders.filter(o => o.createdAt >= ds && o.createdAt < de);
                     return { name: `${i + 1}`, orders: dayOrders.length, delivered: dayOrders.filter(o => ['delivered', 'DELIVERED'].includes(o.status)).length, hold: dayOrders.filter(o => ['hold', 'HOLD'].includes(o.status)).length };
                   });
                 }
@@ -1221,7 +1488,7 @@ export default function Dashboard() {
                   </thead>
                   <tbody className="divide-y divide-slate-50 text-xs">
                     {orders.length > 0 ? orders.map(order => (
-                      <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
+                      <tr key={order.id} onClick={() => setSelectedDetailOrder(order)} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
                         <td className="px-6 py-3.5 font-mono font-bold text-slate-700">#{order.id.slice(-8)}</td>
                         <td className="px-6 py-3.5 font-bold text-slate-900">{order.customerInfo.name}</td>
                         <td className="px-6 py-3.5 font-medium text-slate-500">{order.category}</td>
@@ -1252,46 +1519,17 @@ export default function Dashboard() {
                 <LeadManager autoOpenAdd={true} />
               </div>
             </div>
+          ) : activeTab === 'assign_leads' ? (
+            <LeadAssignment />
           ) : activeTab === 'digitizer_comm' ? (
             <DigitizerCommunication orders={orders} onUpdateOrder={handleUpdateOrder} />
-          ) : [UserRole.STAFF, 'staff'].includes(user?.role as any) ? (
-            <div className="space-y-6">
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 text-center max-w-2xl mx-auto my-12 font-sans animate-in fade-in duration-300">
-                <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                  <Activity size={32} />
-                </div>
-                <h2 className="text-2xl font-black text-slate-900">Operations Desk</h2>
-                <p className="text-slate-500 text-sm mt-2 font-medium max-w-md mx-auto">
-                  Welcome to the workspace. Your core operations dashboard has been streamlined. Access inventory and histories directly below.
-                </p>
-                <div className="grid grid-cols-2 gap-4 mt-8">
-                  <button
-                    onClick={() => setActiveTab('history')}
-                    className="flex flex-col items-center justify-center p-6 bg-slate-50 hover:bg-slate-100/80 hover:border-slate-300 border border-slate-200/60 rounded-2xl transition-all cursor-pointer group"
-                  >
-                    <Activity className="w-6 h-6 text-slate-600 mb-2 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-bold text-slate-850">Order History</span>
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('inventory')}
-                    className="flex flex-col items-center justify-center p-6 bg-slate-50 hover:bg-slate-100/80 hover:border-slate-300 border border-slate-200/60 rounded-2xl transition-all cursor-pointer group"
-                  >
-                    <Package className="w-6 h-6 text-slate-600 mb-2 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-bold text-slate-850">Inventory Logs</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (user?.role === UserRole.ACCOUNTS || user?.role === 'accounts') && (activeTab === 'accounts' || activeTab.startsWith('accounts_')) ? (
-            <AccountsDashboard
+          ) : activeTab === 'designer' || user?.role === UserRole.DESIGNER || user?.role === 'designer' ? (
+            <DesignDashboard
               orders={orders}
               onUpdateOrder={handleUpdateOrder}
-              isAdmin={user?.role === 'admin'}
-              activeSubTab={activeTab === 'accounts' ? 'overview' : (activeTab.replace('accounts_', '') as any)}
-              onSubTabChange={(subTab) => setActiveTab(`accounts_${subTab}`)}
+              user={user}
+              activeChannel={activeTab === 'design_om_comm' ? 'order_management' : 'staff'}
             />
-          ) : activeTab === 'designer' || user?.role === UserRole.DESIGNER || user?.role === 'designer' ? (
-            <DesignDashboard orders={orders} onUpdateOrder={handleUpdateOrder} user={user} />
           ) : user?.role === UserRole.ORDER_MANAGEMENT || user?.role === 'order_management' ? (
             <OrderManagementDashboard orders={orders} inventory={inventory} onUpdateOrder={handleUpdateOrder} onDeleteOrder={handleDeleteOrder} isAdmin={user?.role === 'admin'} />
           ) : activeTab === 'production_board' ? (
@@ -1388,6 +1626,96 @@ export default function Dashboard() {
         onCreateOrder={handleCreateOrder}
         initialSelectedId={inboxSelectedId}
       />
+      {selectedDetailOrder && (
+        <OrderDetailModal
+          order={selectedDetailOrder}
+          onClose={() => setSelectedDetailOrder(null)}
+          isAdmin={user?.role === 'admin'}
+          onUpdateOrder={async (id, updates) => {
+            await handleUpdateOrder(id, updates);
+            setSelectedDetailOrder(prev => prev && prev.id === id ? { ...prev, ...updates } : null);
+          }}
+        />
+      )}
+
+      {/* Leave request modal */}
+      <AnimatePresence>
+        {showLeaveModal && selectedLeaveDate && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white w-full max-w-md rounded-3xl shadow-xl overflow-hidden border border-slate-100"
+            >
+              <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-650 flex items-center justify-center">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Leave Logs</h3>
+                    <p className="text-[10px] text-slate-450 font-medium">Log your leaves or hourly permissions for {selectedLeaveDate.toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowLeaveModal(false); setSelectedLeaveDate(null); }}
+                  className="p-2 hover:bg-slate-200 rounded-xl text-slate-400 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveLeave} className="p-6 space-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Select Leave Option</label>
+                  <select
+                    value={leaveType}
+                    onChange={(e) => setLeaveType(e.target.value as any)}
+                    className="border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="full_day">🌴 Full Day Leave</option>
+                    <option value="half_day">🌤️ Half Day Leave</option>
+                    <option value="hours_permission">⏱️ Hours Permission</option>
+                  </select>
+                </div>
+
+                {leaveType === 'hours_permission' && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">How many hours?</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="8"
+                      value={permissionHours}
+                      onChange={(e) => setPermissionHours(e.target.value)}
+                      className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-50/40"
+                    />
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => { setShowLeaveModal(false); setSelectedLeaveDate(null); }}
+                    className="px-4 py-2 border border-slate-250 text-slate-650 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingLeave}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
+                  >
+                    {isSavingLeave ? 'Saving...' : 'Save Leave Logs'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

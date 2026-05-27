@@ -169,7 +169,7 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect }: NewOr
     setIsProcessing(true);
     try {
       const createdOrder = await onCreateOrder(finalOrderData);
-      alert("Success: New order created outstandingly!");
+      alert("Success: New order created! Downloaded order manual. Please move the order to Design and Accounts manually from the order details.");
       if (createdOrder) {
         await downloadOrderPDF(createdOrder);
       }

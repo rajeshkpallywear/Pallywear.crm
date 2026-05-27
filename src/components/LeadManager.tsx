@@ -13,6 +13,7 @@ import { exportToExcel } from '../lib/excel';
 import { cn } from '../lib/utils';
 import { mockDataService } from '../service/mockDataService';
 import { OrderStatus } from '../types';
+import { downloadOrderPDF } from '../lib/pdfHelper';
 
 interface LeadManagerProps {
   hideAdd?: boolean;
@@ -113,8 +114,11 @@ export default function LeadManager({ hideAdd = false, autoOpenAdd = false }: Le
       };
 
       try {
-        await addOrder(newOrder);
-        alert("Order created in portal! Go to Staff Dashboard Orders to manually send it to Accounts.");
+        const createdOrder = await addOrder(newOrder);
+        alert("Success: Order created! Downloaded order manual. Please move the order to Design and Accounts manually from the order details.");
+        if (createdOrder) {
+          await downloadOrderPDF(createdOrder);
+        }
       } catch (err: any) {
         alert("Failed to create order: " + err.message);
       }

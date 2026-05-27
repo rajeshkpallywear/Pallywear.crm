@@ -41,7 +41,7 @@ export default function Login() {
       const currentUser = auth.currentUser;
       if (currentUser) {
         const email = (currentUser.email || '').toLowerCase().trim();
-        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email === 'daniel.smpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
+        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
         navigate(isAdmin ? '/admin' : '/dashboard');
       } else {
         navigate('/dashboard');
@@ -71,7 +71,7 @@ export default function Login() {
       const result = await login(email.trim(), password);
       if (result.success) {
         const normalizedEmail = email.toLowerCase().trim();
-        const isAdmin = normalizedEmail === 'ceo@pallywear.com' || normalizedEmail === 'rajeshkpallywear@gmail.com' || normalizedEmail === 'daniel.smpallywear@gmail.com' || normalizedEmail.startsWith('admin') || normalizedEmail.startsWith('ceo') || email === 'admin';
+        const isAdmin = normalizedEmail === 'ceo@pallywear.com' || normalizedEmail === 'rajeshkpallywear@gmail.com' || normalizedEmail.startsWith('admin') || normalizedEmail.startsWith('ceo') || email === 'admin';
         navigate(isAdmin ? '/admin' : '/dashboard');
       } else {
         let message = result.message || 'Login failed';

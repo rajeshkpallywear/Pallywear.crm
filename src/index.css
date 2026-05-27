@@ -86,3 +86,11 @@
   filter: grayscale(100%) brightness(1.5);
   mask-image: linear-gradient(to top, black, transparent);
 }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
