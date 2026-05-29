@@ -8,9 +8,10 @@ import { cn } from '../lib/utils';
 
 interface InventoryManagementProps {
   userRole?: string;
+  hideInwardOutward?: boolean;
 }
 
-export default function InventoryManagement({ userRole }: InventoryManagementProps) {
+export default function InventoryManagement({ userRole, hideInwardOutward }: InventoryManagementProps) {
   const isStaff = userRole === 'staff';
   const { inventory, addInventoryMovement, deleteInventoryMovement } = useLeads();
   const [activeTab, setActiveTab] = useState<'products' | 'list' | 'inward' | 'outward'>(isStaff ? 'products' : 'products');
@@ -112,7 +113,7 @@ export default function InventoryManagement({ userRole }: InventoryManagementPro
 
   return (
     <div className="space-y-6">
-      {!isStaff && (
+      {!isStaff && !hideInwardOutward && (
         <div className="flex justify-end gap-2 mb-4">
           <button
             onClick={() => setActiveTab('inward')}
@@ -147,7 +148,7 @@ export default function InventoryManagement({ userRole }: InventoryManagementPro
               Movement Logs
             </button>
           )}
-          {!isStaff && (
+          {!isStaff && !hideInwardOutward && (
             <>
               <button
                 onClick={() => setActiveTab('inward')}

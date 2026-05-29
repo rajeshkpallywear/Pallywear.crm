@@ -110,6 +110,13 @@ const getRoleFromEmail = (email: string): UserRole => {
   if (lower.startsWith('prod') || lower.startsWith('factory')) return UserRole.PRODUCTION;
   if (lower.startsWith('del') || lower.startsWith('delyvery')) return UserRole.DELIVERY;
   if (lower.startsWith('tele') || lower.startsWith('call')) return UserRole.TELECALLER;
+  
+  // Support telecaller employee names (round-robin list)
+  const telecallers = ['vivek', 'vimal', 'arumugam', 'deepika', 'mohan', 'yuvaraj'];
+  if (telecallers.some(name => lower.startsWith(name))) {
+    return UserRole.TELECALLER;
+  }
+  
   return UserRole.STAFF;
 };
 
@@ -151,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {
-              let userData = userDoc.data() as User;
+              let userData = { ...userDoc.data(), id: firebaseUser.uid } as User;
 
               const email = firebaseUser.email || '';
               const isEligibleForAdmin = isAdminEmail(email);
@@ -226,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userDoc = await getDoc(userDocRef);
 
       if (userDoc.exists()) {
-        setUser(userDoc.data() as User);
+        setUser({ ...userDoc.data(), id: result.user.uid } as User);
       } else {
         // Fallback for missing profile during login
         const role = getRoleFromEmail(normalizedEmail);

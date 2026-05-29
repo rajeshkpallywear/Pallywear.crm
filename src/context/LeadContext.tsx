@@ -9,7 +9,8 @@ import {
   query,
   where,
   setDoc,
-  getDocFromServer
+  getDocFromServer,
+  getDoc
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Lead, Invoice, Order, InventoryMovement, UserRole } from '../types';
@@ -100,7 +101,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [inventory, setInventory] = useState<InventoryMovement[]>([]);
-  const { user } = useAuth();
+  const { user, registeredUsers } = useAuth();
 
   useEffect(() => {
     async function testConnection() {
@@ -200,17 +201,51 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   const addLead = async (lead: Omit<Lead, 'id'>) => {
     if (!user) return;
 
+    // A to Z Sorted Round-Robin target users
+    const ASSIGNEES = ['Arumugam', 'Deepika', 'Mohan', 'Vimal', 'Vivek', 'Yuvaraj'];
+    
+    // Retrieve next round-robin index from Firestore settings
+    let nextIndex = 0;
+    const settingsRef = doc(db, 'settings', 'lead_assignment');
+    try {
+      const snap = await getDoc(settingsRef);
+      if (snap.exists()) {
+        const lastIndex = snap.data().lastIndex ?? -1;
+        nextIndex = (lastIndex + 1) % ASSIGNEES.length;
+      }
+    } catch (e) {
+      console.warn("Failed to retrieve round-robin settings, defaulting to index 0:", e);
+    }
+
+    // Persist next index in settings
+    try {
+      await setDoc(settingsRef, { lastIndex: nextIndex });
+    } catch (e) {
+      console.error("Failed to update round-robin index:", e);
+    }
+
+    const assignedName = ASSIGNEES[nextIndex];
+    
+    // Find matched registered user
+    const matchedUser = registeredUsers.find(u => 
+      u.name?.toLowerCase().trim() === assignedName.toLowerCase().trim() ||
+      u.email?.toLowerCase().startsWith(assignedName.toLowerCase())
+    );
+
+    const assignedId = matchedUser ? matchedUser.id : `round_robin_${assignedName.toLowerCase()}`;
+    const assignedFullName = matchedUser ? matchedUser.name : assignedName;
+
     const leadId = Math.random().toString(36).substring(2, 9);
     const newLead = sanitizeForFirestore({
       ...lead,
       id: leadId,
-      createdBy: user.id,
-      createdByName: user.name,
+      createdBy: assignedId,
+      createdByName: assignedFullName,
     });
 
     try {
       await setDoc(doc(db, 'leads', leadId), newLead);
-      console.log('Lead successfully saved to Cloud:', leadId);
+      console.log(`Lead successfully saved and assigned to ${assignedFullName}:`, leadId);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `leads/${leadId}`);
     }

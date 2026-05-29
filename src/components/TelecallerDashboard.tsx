@@ -149,13 +149,12 @@ export default function TelecallerDashboard() {
       if (dbLogs.length > 0) {
         setLogs(dbLogs);
       } else {
-        // Seeding mock data locally
-        setLogs(MOCK_CALL_LOGS(Date.now()));
+        setLogs([]);
       }
       setLoading(false);
     }, (error) => {
-      console.error("Firestore call logs subscription error, using fallback mock data:", error);
-      setLogs(MOCK_CALL_LOGS(Date.now()));
+      console.error("Firestore call logs subscription error:", error);
+      setLogs([]);
       setLoading(false);
     });
 

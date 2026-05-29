@@ -39,6 +39,7 @@ import { Order, OrderStatus } from '../types';
 import { cn, isOrderSizeValid } from '../lib/utils';
 import FileUpload from './FileUpload';
 import ImageViewer from './ImageViewer';
+import OrderDetailModal from './OrderDetailModal';
 import { downloadOrderPDF } from '../lib/pdfHelper';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -184,6 +185,7 @@ export default function AccountsDashboard({
   const [graphPeriod, setGraphPeriod] = useState<GraphPeriod>('month');
 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [viewingOrderDetailOrder, setViewingOrderDetailOrder] = useState<Order | null>(null);
   const [billingFiles, setBillingFiles] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderSearchTerm, setOrderSearchTerm] = useState('');
@@ -338,6 +340,7 @@ export default function AccountsDashboard({
     const search = orderSearchTerm.toLowerCase();
     const matchesSearch =
       order.customerInfo.name.toLowerCase().includes(search) ||
+      (order.customerInfo.companyName || '').toLowerCase().includes(search) ||
       order.id.toLowerCase().includes(search);
 
     if (!matchesSearch) return false;
@@ -721,15 +724,13 @@ export default function AccountsDashboard({
                           <tr
                             key={o.id}
                             onClick={() => {
+                              setViewingOrderDetailOrder(o);
                               if (selectedOrderCategory === 'recent' || selectedOrderCategory === 'hold') {
                                 setSelectedOrder(o);
                                 setBillingFiles(o.accountsAttachments || []);
                               }
                             }}
-                            className={cn(
-                              "transition-colors",
-                              (selectedOrderCategory === 'recent' || selectedOrderCategory === 'hold') ? "hover:bg-slate-50/50 cursor-pointer" : "hover:bg-slate-50/30"
-                            )}
+                            className="transition-colors hover:bg-slate-50/50 cursor-pointer"
                           >
                             <td className="px-6 py-3.5 font-mono font-bold text-slate-700">#{o.id.slice(-7)}</td>
                             <td className="px-6 py-3.5">
@@ -868,6 +869,7 @@ export default function AccountsDashboard({
                       onClick={() => {
                         setActiveSidebarTab('billing');
                         setSelectedOrder(order);
+                        setViewingOrderDetailOrder(order);
                       }}
                       className="w-full flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100 text-left"
                     >
@@ -941,6 +943,7 @@ export default function AccountsDashboard({
                             onClick={() => {
                               setActiveSidebarTab('billing');
                               setSelectedOrder(order);
+                              setViewingOrderDetailOrder(order);
                             }}
                             className="w-full text-left p-3 rounded-2xl bg-indigo-50 text-indigo-700"
                           >
@@ -1646,6 +1649,15 @@ export default function AccountsDashboard({
 
       {viewingImage && (
         <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} fileName={`Receipt_${Date.now()}`} />
+      )}
+
+      {viewingOrderDetailOrder && (
+        <OrderDetailModal
+          order={viewingOrderDetailOrder}
+          onClose={() => setViewingOrderDetailOrder(null)}
+          isAdmin={isAdmin}
+          onUpdateOrder={onUpdateOrder}
+        />
       )}
     </div>
   );

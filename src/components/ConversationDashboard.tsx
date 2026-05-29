@@ -10,13 +10,29 @@ import {
   Clock, Trash2, Download, AlertCircle, Check,
   Plus, Play, Square, FileText, Image as ImageIcon, Sparkles,
   Search, ArrowLeft, Palette, CheckSquare, Mail, Users, CheckCheck,
-  Smile, Phone, Video, Info, Lock
+  Smile, Phone, Video, Info, Lock, FolderOpen
 } from 'lucide-react';
 import FileUpload from './FileUpload';
 import imageCompression from 'browser-image-compression';
 import ImageViewer from './ImageViewer';
 import { Order, OrderStatus, UserRole } from '../types';
 import { useAuth, User as AuthUser } from '../context/AuthContext';
+import { db } from '../lib/firebase';
+import {
+  collection, doc, setDoc, updateDoc, deleteDoc, getDoc, onSnapshot, getDocs, query, where
+} from 'firebase/firestore';
+
+// Legacy Conversation interface for DesignDashboard compatibility
+export interface Conversation {
+  id: string;
+  customerName: string;
+  staffName?: string;
+  message: string;
+  replies?: { id: string; sender: string; text: string; createdAt: number }[];
+  imageAttachments?: string[];
+  pdfAttachments?: string[];
+  createdAt: number;
+}
 import { cn } from '../lib/utils';
 
 export interface Chat {
@@ -73,97 +89,96 @@ interface ConversationDashboardProps {
   initialSelectedId?: string | null;
 }
 
-// Initial seeder to load mock data for testing
-const seedMockChatData = (currentUserId: string, currentUserEmail: string) => {
-  const chatsKey = 'pallywear_adv_chats';
-  const msgsKey = 'pallywear_adv_messages';
-  const invitesKey = 'pallywear_adv_invites';
+// Real-time Firestore sync & seeder
+const seedMockChatData = async (currentUserId: string, currentUserEmail: string) => {
+  try {
+    const q = query(collection(db, 'pallywear_adv_chats'));
+    const snap = await getDocs(q);
+    if (!snap.empty) return; // already seeded or has data
 
-  if (!localStorage.getItem(chatsKey)) {
-    // Seed sample invites and chats
-    const sampleChats: Chat[] = [
-      {
-        id: 'group_design_team',
-        type: 'group',
-        name: 'Embroidery Design Squad',
-        avatar: 'https://ui-avatars.com/api/?name=Embroidery+Design+Squad&background=4D109E&color=fff',
-        participants: [currentUserId, 'designer_arun', 'admin_ceo'],
-        acceptedParticipants: [currentUserId, 'designer_arun', 'admin_ceo'],
-        createdAt: Date.now() - 3600 * 1000 * 24,
-        updatedAt: Date.now() - 600 * 1000,
-        lastMessage: 'Hi everyone, please review the latest t-shirt mockup design.',
-        lastMessageTime: Date.now() - 600 * 1000,
-        lastSenderName: 'Arun (Designer)',
-        unreadCount: { [currentUserId]: 2 }
-      },
-      {
-        id: 'chat_with_ceo',
-        type: 'direct',
-        name: 'CEO Office',
-        recipientEmail: 'ceo@pallywear.com',
-        recipientRole: 'admin',
-        avatar: 'https://ui-avatars.com/api/?name=CEO+Office&background=1A0B91&color=fff',
-        participants: [currentUserId, 'admin_ceo'],
-        acceptedParticipants: [currentUserId, 'admin_ceo'],
-        createdAt: Date.now() - 3600 * 1000 * 12,
-        updatedAt: Date.now() - 1200 * 1000,
-        lastMessage: 'Let me know once the telecalling leads are distributed.',
-        lastMessageTime: Date.now() - 1200 * 1000,
-        lastSenderName: 'CEO Office',
-        unreadCount: { [currentUserId]: 0 }
-      }
-    ];
+    console.log("Seeding Firestore with default chats...");
+    
+    // Seed groups
+    await setDoc(doc(db, 'pallywear_adv_chats', 'group_design_team'), {
+      id: 'group_design_team',
+      type: 'group',
+      name: 'Embroidery Design Squad',
+      avatar: 'https://ui-avatars.com/api/?name=Embroidery+Design+Squad&background=4D109E&color=fff',
+      participants: [currentUserId, 'designer_arun', 'admin_ceo'],
+      acceptedParticipants: [currentUserId, 'designer_arun', 'admin_ceo'],
+      createdAt: Date.now() - 3600 * 1000 * 24,
+      updatedAt: Date.now() - 600 * 1000,
+      lastMessage: 'Hi everyone, please review the latest t-shirt mockup design.',
+      lastMessageTime: Date.now() - 600 * 1000,
+      lastSenderName: 'Arun (Designer)',
+      unreadCount: { [currentUserId]: 2 }
+    });
 
-    const sampleMessages: ChatMessage[] = [
-      {
-        id: 'm1',
-        chatId: 'group_design_team',
-        senderId: 'designer_arun',
-        senderName: 'Arun',
-        senderRole: 'designer',
-        message: 'Welcome to the design thread! Uploading reference drafts.',
-        createdAt: Date.now() - 3600 * 1000 * 2,
-        readBy: ['designer_arun']
-      },
-      {
-        id: 'm2',
-        chatId: 'group_design_team',
-        senderId: 'designer_arun',
-        senderName: 'Arun',
-        senderRole: 'designer',
-        message: 'Hi everyone, please review the latest t-shirt mockup design.',
-        createdAt: Date.now() - 600 * 1000,
-        readBy: ['designer_arun']
-      },
-      {
-        id: 'm3',
-        chatId: 'chat_with_ceo',
-        senderId: 'admin_ceo',
-        senderName: 'CEO',
-        senderRole: 'admin',
-        message: 'Let me know once the telecalling leads are distributed.',
-        createdAt: Date.now() - 1200 * 1000,
-        readBy: [currentUserId, 'admin_ceo']
-      }
-    ];
+    await setDoc(doc(db, 'pallywear_adv_chats', 'chat_with_ceo'), {
+      id: 'chat_with_ceo',
+      type: 'direct',
+      name: 'CEO Office',
+      recipientEmail: 'ceo@pallywear.com',
+      recipientRole: 'admin',
+      avatar: 'https://ui-avatars.com/api/?name=CEO+Office&background=1A0B91&color=fff',
+      participants: [currentUserId, 'admin_ceo'],
+      acceptedParticipants: [currentUserId, 'admin_ceo'],
+      createdAt: Date.now() - 3600 * 1000 * 12,
+      updatedAt: Date.now() - 1200 * 1000,
+      lastMessage: 'Let me know once the telecalling leads are distributed.',
+      lastMessageTime: Date.now() - 1200 * 1000,
+      lastSenderName: 'CEO Office',
+      unreadCount: { [currentUserId]: 0 }
+    });
 
-    const sampleInvites: ChatInvite[] = [
-      {
-        id: 'invite_1',
-        chatId: 'chat_pending_invite',
-        senderId: 'marketing_manager',
-        senderName: 'Marketing Desk',
-        senderEmail: 'marketing@pallywear.com',
-        recipientEmail: currentUserEmail || 'daniel@pallywear.com',
-        status: 'pending',
-        chatType: 'direct',
-        createdAt: Date.now() - 1800 * 1000
-      }
-    ];
+    // Seed messages
+    await setDoc(doc(db, 'pallywear_adv_messages', 'm1'), {
+      id: 'm1',
+      chatId: 'group_design_team',
+      senderId: 'designer_arun',
+      senderName: 'Arun',
+      senderRole: 'designer',
+      message: 'Welcome to the design thread! Uploading reference drafts.',
+      createdAt: Date.now() - 3600 * 1000 * 2,
+      readBy: ['designer_arun']
+    });
 
-    localStorage.setItem(chatsKey, JSON.stringify(sampleChats));
-    localStorage.setItem(msgsKey, JSON.stringify(sampleMessages));
-    localStorage.setItem(invitesKey, JSON.stringify(sampleInvites));
+    await setDoc(doc(db, 'pallywear_adv_messages', 'm2'), {
+      id: 'm2',
+      chatId: 'group_design_team',
+      senderId: 'designer_arun',
+      senderName: 'Arun',
+      senderRole: 'designer',
+      message: 'Hi everyone, please review the latest t-shirt mockup design.',
+      createdAt: Date.now() - 600 * 1000,
+      readBy: ['designer_arun']
+    });
+
+    await setDoc(doc(db, 'pallywear_adv_messages', 'm3'), {
+      id: 'm3',
+      chatId: 'chat_with_ceo',
+      senderId: 'admin_ceo',
+      senderName: 'CEO',
+      senderRole: 'admin',
+      message: 'Let me know once the telecalling leads are distributed.',
+      createdAt: Date.now() - 1200 * 1000,
+      readBy: [currentUserId, 'admin_ceo']
+    });
+
+    // Seed invites
+    await setDoc(doc(db, 'pallywear_adv_invites', 'invite_1'), {
+      id: 'invite_1',
+      chatId: 'chat_pending_invite',
+      senderId: 'marketing_manager',
+      senderName: 'Marketing Desk',
+      senderEmail: 'marketing@pallywear.com',
+      recipientEmail: currentUserEmail || 'daniel@pallywear.com',
+      status: 'pending',
+      chatType: 'direct',
+      createdAt: Date.now() - 1800 * 1000
+    });
+  } catch (e) {
+    console.error("Failed to seed mock chats:", e);
   }
 };
 
@@ -178,11 +193,10 @@ export default function ConversationDashboard({
 }: ConversationDashboardProps) {
   const { registeredUsers } = useAuth();
   
-  // Local Database States
+  // Firestore Sync Database States
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [invites, setInvites] = useState<ChatInvite[]>([]);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // UI Selection States
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -219,13 +233,33 @@ export default function ConversationDashboard({
   const currentUserEmail = currentUser?.email || '';
   const currentUserName = currentUser?.name || 'User';
 
-  // Seed initial data once logged in
+  // Firestore onSnapshot listeners
   useEffect(() => {
-    if (isOpen && currentUserId) {
-      seedMockChatData(currentUserId, currentUserEmail);
-      loadLocalData();
-    }
-  }, [isOpen, currentUserId, refreshTrigger]);
+    if (!isOpen || !currentUserId) return;
+
+    seedMockChatData(currentUserId, currentUserEmail);
+
+    const unsubChats = onSnapshot(collection(db, 'pallywear_adv_chats'), (snapshot) => {
+      const list = snapshot.docs.map(doc => doc.data() as Chat);
+      setChats(list);
+    });
+
+    const unsubMessages = onSnapshot(collection(db, 'pallywear_adv_messages'), (snapshot) => {
+      const list = snapshot.docs.map(doc => doc.data() as ChatMessage);
+      setMessages(list);
+    });
+
+    const unsubInvites = onSnapshot(collection(db, 'pallywear_adv_invites'), (snapshot) => {
+      const list = snapshot.docs.map(doc => doc.data() as ChatInvite);
+      setInvites(list);
+    });
+
+    return () => {
+      unsubChats();
+      unsubMessages();
+      unsubInvites();
+    };
+  }, [isOpen, currentUserId]);
 
   // Read receipts and scroll to bottom
   useEffect(() => {
@@ -237,94 +271,34 @@ export default function ConversationDashboard({
     }
   }, [selectedChatId, messages]);
 
-  // Real-time synchronization between browser tabs
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (
-        e.key === 'pallywear_adv_chats' ||
-        e.key === 'pallywear_adv_messages' ||
-        e.key === 'pallywear_adv_invites'
-      ) {
-        loadLocalData();
+  // Mark chat messages as read in Firestore
+  const markChatAsRead = async (chatId: string) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (!chat) return;
+
+    try {
+      if (chat.unreadCount && chat.unreadCount[currentUserId] > 0) {
+        await updateDoc(doc(db, 'pallywear_adv_chats', chatId), {
+          [`unreadCount.${currentUserId}`]: 0
+        });
       }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
 
-  const loadLocalData = () => {
-    const chatsData = localStorage.getItem('pallywear_adv_chats');
-    const msgsData = localStorage.getItem('pallywear_adv_messages');
-    const invitesData = localStorage.getItem('pallywear_adv_invites');
-
-    setChats(chatsData ? JSON.parse(chatsData) : []);
-    setMessages(msgsData ? JSON.parse(msgsData) : []);
-    setInvites(invitesData ? JSON.parse(invitesData) : []);
-  };
-
-  const saveData = (updatedChats: Chat[], updatedMsgs: ChatMessage[], updatedInvites: ChatInvite[]) => {
-    localStorage.setItem('pallywear_adv_chats', JSON.stringify(updatedChats));
-    localStorage.setItem('pallywear_adv_messages', JSON.stringify(updatedMsgs));
-    localStorage.setItem('pallywear_adv_invites', JSON.stringify(updatedInvites));
-    setChats(updatedChats);
-    setMessages(updatedMsgs);
-    setInvites(updatedInvites);
-  };
-
-  // Mark chat messages as read
-  const markChatAsRead = (chatId: string) => {
-    const chatsData = localStorage.getItem('pallywear_adv_chats');
-    const msgsData = localStorage.getItem('pallywear_adv_messages');
-    if (!chatsData || !msgsData) return;
-
-    const localChats: Chat[] = JSON.parse(chatsData);
-    const localMsgs: ChatMessage[] = JSON.parse(msgsData);
-
-    let hasUpdates = false;
-
-    // Update unread count for current user
-    const updatedChats = localChats.map(c => {
-      if (c.id === chatId && c.unreadCount && c.unreadCount[currentUserId] > 0) {
-        hasUpdates = true;
-        return {
-          ...c,
-          unreadCount: {
-            ...c.unreadCount,
-            [currentUserId]: 0
-          }
-        };
-      }
-      return c;
-    });
-
-    // Add user ID to readBy array for messages
-    const updatedMsgs = localMsgs.map(m => {
-      if (m.chatId === chatId && !m.readBy.includes(currentUserId)) {
-        hasUpdates = true;
-        return {
-          ...m,
+      const unreadMsgs = messages.filter(m => m.chatId === chatId && !m.readBy.includes(currentUserId));
+      for (const m of unreadMsgs) {
+        await updateDoc(doc(db, 'pallywear_adv_messages', m.id), {
           readBy: [...m.readBy, currentUserId]
-        };
+        });
       }
-      return m;
-    });
-
-    if (hasUpdates) {
-      localStorage.setItem('pallywear_adv_chats', JSON.stringify(updatedChats));
-      localStorage.setItem('pallywear_adv_messages', JSON.stringify(updatedMsgs));
-      setChats(updatedChats);
-      setMessages(updatedMsgs);
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  // Filter list
+  // Filter lists
   const filteredChats = useMemo(() => {
     return chats
       .filter(chat => {
-        // Must be a participant
         if (!chat.participants.includes(currentUserId)) return false;
-        
-        // Tab filters
         if (activeTab === 'unread') {
           return chat.unreadCount && chat.unreadCount[currentUserId] > 0;
         }
@@ -334,7 +308,6 @@ export default function ConversationDashboard({
         return true;
       })
       .filter(chat => {
-        // Search filter
         const q = searchQuery.toLowerCase().trim();
         if (!q) return true;
         return (
@@ -346,9 +319,7 @@ export default function ConversationDashboard({
 
   const pendingInvites = useMemo(() => {
     return invites.filter(inv => {
-      // Received invites for current user
       const isReceived = inv.recipientEmail.toLowerCase().trim() === currentUserEmail.toLowerCase().trim();
-      // Sent invites by current user
       const isSent = inv.senderId === currentUserId;
       return (isReceived || isSent) && inv.status === 'pending';
     });
@@ -366,7 +337,7 @@ export default function ConversationDashboard({
   }, [messages, selectedChatId]);
 
   // Send Direct/Group Invite
-  const handleSendInvite = (e: React.FormEvent) => {
+  const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     const targetEmail = inviteEmail.toLowerCase().trim();
     if (!targetEmail) return;
@@ -377,182 +348,183 @@ export default function ConversationDashboard({
     }
 
     setIsSendingAction(true);
+    try {
+      const recipientUser = registeredUsers.find(u => u.email.toLowerCase().trim() === targetEmail);
 
-    // Find recipient details in registered list
-    const recipientUser = registeredUsers.find(u => u.email.toLowerCase().trim() === targetEmail);
+      const chatId = `chat_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      const inviteId = `invite_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-    const chatId = `chat_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-    const inviteId = `invite_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      const newChat: Chat = {
+        id: chatId,
+        type: 'direct',
+        name: recipientUser?.name || targetEmail.split('@')[0],
+        recipientEmail: targetEmail,
+        recipientRole: recipientUser?.role || 'user',
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(recipientUser?.name || targetEmail)}&background=1A0B91&color=fff`,
+        participants: [currentUserId, recipientUser?.id || 'pending_user_id'].filter(id => id !== 'pending_user_id'),
+        acceptedParticipants: [currentUserId],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        lastMessage: 'Waiting for invitation acceptance...',
+        lastMessageTime: Date.now(),
+        lastSenderName: currentUserName,
+        unreadCount: {}
+      };
 
-    // 1. Create a pending chat
-    const newChat: Chat = {
-      id: chatId,
-      type: 'direct',
-      name: recipientUser?.name || targetEmail.split('@')[0],
-      recipientEmail: targetEmail,
-      recipientRole: recipientUser?.role || 'user',
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(recipientUser?.name || targetEmail)}&background=1A0B91&color=fff`,
-      participants: [currentUserId, recipientUser?.id || 'pending_user_id'].filter(id => id !== 'pending_user_id'),
-      acceptedParticipants: [currentUserId], // only sender has accepted
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      lastMessage: 'Waiting for invitation acceptance...',
-      lastMessageTime: Date.now(),
-      lastSenderName: currentUserName,
-      unreadCount: {}
-    };
+      const newInvite: ChatInvite = {
+        id: inviteId,
+        chatId: chatId,
+        senderId: currentUserId,
+        senderName: currentUserName,
+        senderEmail: currentUserEmail,
+        recipientEmail: targetEmail,
+        status: 'pending',
+        chatType: 'direct',
+        createdAt: Date.now()
+      };
 
-    // 2. Create the invite log
-    const newInvite: ChatInvite = {
-      id: inviteId,
-      chatId: chatId,
-      senderId: currentUserId,
-      senderName: currentUserName,
-      senderEmail: currentUserEmail,
-      recipientEmail: targetEmail,
-      status: 'pending',
-      chatType: 'direct',
-      createdAt: Date.now()
-    };
+      await setDoc(doc(db, 'pallywear_adv_chats', chatId), newChat);
+      await setDoc(doc(db, 'pallywear_adv_invites', inviteId), newInvite);
 
-    const updatedChats = [...chats, newChat];
-    const updatedInvites = [...invites, newInvite];
-
-    saveData(updatedChats, messages, updatedInvites);
-
-    setInviteEmail('');
-    setShowInviteModal(false);
-    setIsSendingAction(false);
-    alert(`Invitation sent to ${targetEmail}! Conversation will unlock once they accept.`);
+      setInviteEmail('');
+      setShowInviteModal(false);
+      alert(`Invitation sent to ${targetEmail}! Conversation will unlock once they accept.`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to send invite.");
+    } finally {
+      setIsSendingAction(false);
+    }
   };
 
   // Accept Invite
-  const handleAcceptInvite = (invite: ChatInvite) => {
-    const updatedInvites = invites.map(inv => {
-      if (inv.id === invite.id) return { ...inv, status: 'accepted' as const };
-      return inv;
-    });
+  const handleAcceptInvite = async (invite: ChatInvite) => {
+    try {
+      await updateDoc(doc(db, 'pallywear_adv_invites', invite.id), { status: 'accepted' });
 
-    const updatedChats = chats.map(chat => {
-      if (chat.id === invite.chatId) {
-        // Ensure recipient ID is appended if they register/log in now
-        const currentParticipants = [...chat.participants];
+      const chatRef = doc(db, 'pallywear_adv_chats', invite.chatId);
+      const chatSnap = await getDoc(chatRef);
+      if (chatSnap.exists()) {
+        const chatData = chatSnap.data() as Chat;
+        const currentParticipants = [...(chatData.participants || [])];
         if (!currentParticipants.includes(currentUserId)) {
           currentParticipants.push(currentUserId);
         }
-        return {
-          ...chat,
+        await updateDoc(chatRef, {
           participants: currentParticipants,
-          acceptedParticipants: [...chat.acceptedParticipants, currentUserId],
+          acceptedParticipants: [...(chatData.acceptedParticipants || []), currentUserId],
           lastMessage: `${currentUserName} accepted the invitation. Chat unlocked!`,
           lastMessageTime: Date.now()
-        };
+        });
       }
-      return chat;
-    });
 
-    // Add first system welcome message
-    const welcomeMsg: ChatMessage = {
-      id: `system_${Date.now()}`,
-      chatId: invite.chatId,
-      senderId: 'system',
-      senderName: 'System',
-      senderRole: 'system',
-      message: `${currentUserName} joined the conversation. You can now chat!`,
-      createdAt: Date.now(),
-      readBy: [currentUserId]
-    };
+      const welcomeMsgId = `system_${Date.now()}`;
+      const welcomeMsg: ChatMessage = {
+        id: welcomeMsgId,
+        chatId: invite.chatId,
+        senderId: 'system',
+        senderName: 'System',
+        senderRole: 'system',
+        message: `${currentUserName} joined the conversation. You can now chat!`,
+        createdAt: Date.now(),
+        readBy: [currentUserId]
+      };
+      await setDoc(doc(db, 'pallywear_adv_messages', welcomeMsgId), welcomeMsg);
 
-    const updatedMsgs = [...messages, welcomeMsg];
-
-    saveData(updatedChats, updatedMsgs, updatedInvites);
-    setSelectedChatId(invite.chatId);
-    setActiveTab('all');
+      setSelectedChatId(invite.chatId);
+      setActiveTab('all');
+    } catch (e) {
+      console.error(e);
+      alert("Failed to accept invitation.");
+    }
   };
 
   // Decline Invite
-  const handleDeclineInvite = (invite: ChatInvite) => {
-    const updatedInvites = invites.map(inv => {
-      if (inv.id === invite.id) return { ...inv, status: 'declined' as const };
-      return inv;
-    });
-
-    const updatedChats = chats.filter(chat => chat.id !== invite.chatId);
-
-    saveData(updatedChats, messages, updatedInvites);
+  const handleDeclineInvite = async (invite: ChatInvite) => {
+    try {
+      await updateDoc(doc(db, 'pallywear_adv_invites', invite.id), { status: 'declined' });
+      await deleteDoc(doc(db, 'pallywear_adv_chats', invite.chatId));
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   // Create Group Chat
-  const handleCreateGroup = (e: React.FormEvent) => {
+  const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupName.trim()) return;
 
     setIsSendingAction(true);
-    const chatId = `group_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    try {
+      const chatId = `group_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      const emailsToInvite = inviteGroupEmails
+        .toLowerCase()
+        .split(',')
+        .map(email => email.trim())
+        .filter(Boolean);
 
-    // Get selected users and emails
-    const emailsToInvite = inviteGroupEmails
-      .toLowerCase()
-      .split(',')
-      .map(email => email.trim())
-      .filter(Boolean);
+      const groupParticipants = [currentUserId, ...selectedGroupParticipants];
+      const groupAccepted = [currentUserId];
 
-    const groupParticipants = [currentUserId, ...selectedGroupParticipants];
-    const groupAccepted = [currentUserId]; // Only creator starts as accepted
+      for (const email of emailsToInvite) {
+        const inviteId = `invite_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+        const newInvite: ChatInvite = {
+          id: inviteId,
+          chatId: chatId,
+          senderId: currentUserId,
+          senderName: currentUserName,
+          senderEmail: currentUserEmail,
+          recipientEmail: email,
+          status: 'pending',
+          chatType: 'group',
+          groupName: groupName.trim(),
+          createdAt: Date.now()
+        };
+        await setDoc(doc(db, 'pallywear_adv_invites', inviteId), newInvite);
+      }
 
-    // Send invites for emails
-    const newInvites: ChatInvite[] = emailsToInvite.map(email => ({
-      id: `invite_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-      chatId: chatId,
-      senderId: currentUserId,
-      senderName: currentUserName,
-      senderEmail: currentUserEmail,
-      recipientEmail: email,
-      status: 'pending',
-      chatType: 'group',
-      groupName: groupName.trim(),
-      createdAt: Date.now()
-    }));
+      const newChat: Chat = {
+        id: chatId,
+        type: 'group',
+        name: groupName.trim(),
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName.trim())}&background=4D109E&color=fff`,
+        participants: groupParticipants,
+        acceptedParticipants: groupAccepted,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        lastMessage: `Group "${groupName.trim()}" created. Inviting participants...`,
+        lastMessageTime: Date.now(),
+        lastSenderName: currentUserName,
+        unreadCount: {}
+      };
 
-    const newChat: Chat = {
-      id: chatId,
-      type: 'group',
-      name: groupName.trim(),
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName.trim())}&background=4D109E&color=fff`,
-      participants: groupParticipants,
-      acceptedParticipants: groupAccepted,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      lastMessage: `Group "${groupName.trim()}" created. Inviting participants...`,
-      lastMessageTime: Date.now(),
-      lastSenderName: currentUserName,
-      unreadCount: {}
-    };
+      await setDoc(doc(db, 'pallywear_adv_chats', chatId), newChat);
 
-    const welcomeMsg: ChatMessage = {
-      id: `system_${Date.now()}`,
-      chatId: chatId,
-      senderId: 'system',
-      senderName: 'System',
-      senderRole: 'system',
-      message: `${currentUserName} created group "${groupName.trim()}".`,
-      createdAt: Date.now(),
-      readBy: [currentUserId]
-    };
+      const welcomeMsgId = `system_${Date.now()}`;
+      const welcomeMsg: ChatMessage = {
+        id: welcomeMsgId,
+        chatId: chatId,
+        senderId: 'system',
+        senderName: 'System',
+        senderRole: 'system',
+        message: `${currentUserName} created group "${groupName.trim()}".`,
+        createdAt: Date.now(),
+        readBy: [currentUserId]
+      };
+      await setDoc(doc(db, 'pallywear_adv_messages', welcomeMsgId), welcomeMsg);
 
-    const updatedChats = [...chats, newChat];
-    const updatedMsgs = [...messages, welcomeMsg];
-    const updatedInvites = [...invites, ...newInvites];
-
-    saveData(updatedChats, updatedMsgs, updatedInvites);
-
-    setGroupName('');
-    setSelectedGroupParticipants([]);
-    setInviteGroupEmails('');
-    setShowGroupModal(false);
-    setIsSendingAction(false);
-    setSelectedChatId(chatId);
-    setActiveTab('all');
+      setGroupName('');
+      setSelectedGroupParticipants([]);
+      setInviteGroupEmails('');
+      setShowGroupModal(false);
+      setSelectedChatId(chatId);
+      setActiveTab('all');
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create group.");
+    } finally {
+      setIsSendingAction(false);
+    }
   };
 
   // Image upload compression
@@ -603,7 +575,7 @@ export default function ConversationDashboard({
     const duration = 2.0;
     const numSamples = sampleRate * duration;
     const buffer = new Uint8Array(44 + numSamples);
-    buffer.set([0x52, 0x49, 0x46, 0x46]); // "RIFF"
+    buffer.set([0x52, 0x49, 0x46, 0x46]);
     return new Blob([buffer], { type: 'audio/wav' });
   };
 
@@ -658,9 +630,9 @@ export default function ConversationDashboard({
   };
 
   // Send Message
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedChatId) return;
+    if (!selectedChatId || !activeChat) return;
 
     const trimmed = messageText.trim();
     if (!trimmed && attachments.length === 0 && !voiceNoteBase64) return;
@@ -683,39 +655,33 @@ export default function ConversationDashboard({
       readBy: [currentUserId]
     };
 
-    // Update Chats database
-    const updatedChats = chats.map(c => {
-      if (c.id === selectedChatId) {
-        // Increment unread count for other participants
-        const nextUnread = { ...(c.unreadCount || {}) };
-        c.participants.forEach(pId => {
-          if (pId !== currentUserId) {
-            nextUnread[pId] = (nextUnread[pId] || 0) + 1;
-          }
-        });
+    try {
+      const nextUnread = { ...(activeChat.unreadCount || {}) };
+      activeChat.participants.forEach(pId => {
+        if (pId !== currentUserId) {
+          nextUnread[pId] = (nextUnread[pId] || 0) + 1;
+        }
+      });
 
-        return {
-          ...c,
-          lastMessage: trimmed || (images.length > 0 ? '📷 Image attachment' : '🎤 Voice note'),
-          lastMessageTime: Date.now(),
-          lastSenderName: currentUserName,
-          unreadCount: nextUnread,
-          updatedAt: Date.now()
-        };
-      }
-      return c;
-    });
+      await updateDoc(doc(db, 'pallywear_adv_chats', selectedChatId), {
+        lastMessage: trimmed || (images.length > 0 ? '📷 Image attachment' : '🎤 Voice note'),
+        lastMessageTime: Date.now(),
+        lastSenderName: currentUserName,
+        unreadCount: nextUnread,
+        updatedAt: Date.now()
+      });
 
-    const updatedMsgs = [...messages, newMsg];
-    saveData(updatedChats, updatedMsgs, invites);
+      await setDoc(doc(db, 'pallywear_adv_messages', msgId), newMsg);
 
-    // Reset inputs
-    setMessageText('');
-    setAttachments([]);
-    setVoiceNoteBase64(null);
+      setMessageText('');
+      setAttachments([]);
+      setVoiceNoteBase64(null);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to send message.");
+    }
   };
-
-  // Check if current user has accepted the chat
+// Check if current user has accepted the chat
   const hasAcceptedChat = activeChat ? activeChat.acceptedParticipants.includes(currentUserId) : false;
 
   // Retrieve active pending invite for active chat
@@ -1073,17 +1039,20 @@ export default function ConversationDashboard({
 
                       {msg.pdfAttachments && msg.pdfAttachments.length > 0 && (
                         <div className="space-y-1.5 mt-2">
-                          {msg.pdfAttachments.map((file, i) => (
-                            <a
-                              key={i}
-                              href={file}
-                              download={`document_${i + 1}.pdf`}
-                              className="flex items-center gap-2 p-2 rounded-xl bg-black/5 hover:bg-black/10 text-xs font-bold text-slate-650"
-                            >
-                              <FileText size={14} />
-                              Document {i + 1}
-                            </a>
-                          ))}
+                          {msg.pdfAttachments.map((file, i) => {
+                            const isZip = file.startsWith('data:application/zip') || file.startsWith('data:application/x-zip-compressed') || file.includes('zip');
+                            return (
+                              <a
+                                key={i}
+                                href={file}
+                                download={isZip ? `archive_${i + 1}.zip` : `document_${i + 1}.pdf`}
+                                className="flex items-center gap-2 p-2 rounded-xl bg-black/5 hover:bg-black/10 text-xs font-bold text-slate-650"
+                              >
+                                {isZip ? <FolderOpen size={14} /> : <FileText size={14} />}
+                                {isZip ? `Archive ${i + 1}` : `Document ${i + 1}`}
+                              </a>
+                            );
+                          })}
                         </div>
                       )}
 
@@ -1130,7 +1099,7 @@ export default function ConversationDashboard({
                   <input
                     type="file"
                     id="inbox-msg-file-input"
-                    accept="image/*,application/pdf"
+                    accept="image/*,application/pdf,.zip,application/zip,application/x-zip-compressed"
                     className="hidden"
                     multiple
                     onChange={handleFileChange}
@@ -1383,7 +1352,7 @@ export default function ConversationDashboard({
       {/* VIEW IMAGE ATTACHMENTS */}
       {viewImage && (
         <ImageViewer
-          imgSrc={viewImage}
+          src={viewImage}
           onClose={() => setViewImage(null)}
         />
       )}

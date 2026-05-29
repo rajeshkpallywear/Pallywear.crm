@@ -3,7 +3,8 @@ import { Button } from '../components/Button';
 import { Layout, Mail, Lock, ArrowRight, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import Logo from '../components/Logo';
 import { UserRole } from '../types';
@@ -22,6 +23,59 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const logLoginWithGPS = async (uid: string, userEmail: string) => {
+    const timestamp = Date.now();
+    const userAgent = navigator.userAgent;
+    
+    let name = userEmail.split('@')[0];
+    let role = 'user';
+    try {
+      const userDocRef = doc(db, 'users', uid);
+      const userDoc = await getDoc(userDocRef);
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        name = data.name || name;
+        role = data.role || role;
+      }
+    } catch (e) {
+      console.error("Error fetching user profile for log:", e);
+    }
+
+    const saveLog = async (latitude: number | null, longitude: number | null) => {
+      try {
+        const logId = `login_${uid}_${timestamp}`;
+        await setDoc(doc(db, 'pallywear_login_logs', logId), {
+          id: logId,
+          userId: uid,
+          userName: name,
+          userEmail,
+          userRole: role,
+          userAgent,
+          timestamp,
+          latitude,
+          longitude
+        });
+      } catch (err) {
+        console.error("Error saving login log to Firestore:", err);
+      }
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          saveLog(pos.coords.latitude, pos.coords.longitude);
+        },
+        (err) => {
+          console.warn("Geolocation permission error:", err);
+          saveLog(null, null);
+        },
+        { timeout: 5000 }
+      );
+    } else {
+      saveLog(null, null);
+    }
+  };
+
 
 
   useEffect(() => {
@@ -36,10 +90,9 @@ export default function Login() {
     setError('');
     const result = await googleLogin();
     if (result.success) {
-      // The user role is already set in the context during onAuthStateChanged or googleLogin
-      // We'll wait a brief moment for the state to settle or check the email again
       const currentUser = auth.currentUser;
       if (currentUser) {
+        logLoginWithGPS(currentUser.uid, currentUser.email || '');
         const email = (currentUser.email || '').toLowerCase().trim();
         const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
         navigate(isAdmin ? '/admin' : '/dashboard');
@@ -70,6 +123,10 @@ export default function Login() {
     try {
       const result = await login(email.trim(), password);
       if (result.success) {
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          logLoginWithGPS(currentUser.uid, currentUser.email || email);
+        }
         const normalizedEmail = email.toLowerCase().trim();
         const isAdmin = normalizedEmail === 'ceo@pallywear.com' || normalizedEmail === 'rajeshkpallywear@gmail.com' || normalizedEmail.startsWith('admin') || normalizedEmail.startsWith('ceo') || email === 'admin';
         navigate(isAdmin ? '/admin' : '/dashboard');

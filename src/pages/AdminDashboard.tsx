@@ -22,7 +22,7 @@ import OrderDetailModal from '../components/OrderDetailModal';
 import { Order, OrderStatus } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { collection, getDocs, deleteDoc, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc, doc, setDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import ConversationDashboard from '../components/ConversationDashboard';
 
@@ -39,7 +39,7 @@ export default function AdminDashboard() {
   const { user, logout, registeredUsers, deleteUser, loading: authLoading } = useAuth();
   const { leads, invoices, orders, updateOrder, deleteOrder } = useLeads();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'invoices' | 'security' | 'logs' | 'orders'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'invoices' | 'security' | 'logs' | 'orders' | 'leaves'>('overview');
   const [selectedDept, setSelectedDept] = useState<'staff' | 'accounts' | 'order_management' | 'production' | 'delivery' | 'designers'>('staff');
   const [selectedSection, setSelectedSection] = useState<'total' | 'hold' | 'completed'>('total');
   const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
@@ -56,6 +56,26 @@ export default function AdminDashboard() {
   const [inboxSelectedId, setInboxSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPeriod, setFilterPeriod] = useState('last_month');
+  const [loginLogs, setLoginLogs] = useState<any[]>([]);
+  const [leavesList, setLeavesList] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'pallywear_login_logs'), (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLoginLogs(list);
+    });
+    return () => unsub();
+  }, []);
+
+  React.useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'leaves'), (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLeavesList(list);
+    }, (error) => {
+      console.error("Firestore leaves subscription error:", error);
+    });
+    return () => unsub();
+  }, []);
 
   // Fetch app settings
   React.useEffect(() => {
@@ -286,6 +306,7 @@ export default function AdminDashboard() {
     { id: 'orders' as const, label: 'Global Orders', icon: Zap },
     { id: 'invoices' as const, label: 'Invoices', icon: BarChart3 },
     { id: 'logs' as const, label: 'Audit Logs', icon: FileText },
+    { id: 'leaves' as const, label: 'Leaves Logs', icon: Calendar },
     { id: 'security' as const, label: 'Security', icon: Shield },
     { id: 'inbox' as const, label: 'Inbox', icon: MessageSquare, action: () => setIsInboxOpen(true) },
     { id: 'user_app' as const, label: 'User App', icon: Layout, action: () => navigate('/dashboard') }
@@ -704,19 +725,21 @@ export default function AdminDashboard() {
                         setSelectedSection('total');
                       }}
                       className={cn(
-                        "p-4 rounded-2xl border text-left flex flex-col gap-3 transition-all relative overflow-hidden group cursor-pointer shadow-sm bg-white border-slate-100",
-                        isActive ? "bg-slate-900 border-slate-900 text-white scale-[1.02]" : "hover:bg-slate-50"
+                        "p-4 rounded-2xl border text-left flex flex-col gap-3 transition-all relative overflow-hidden group cursor-pointer shadow-sm",
+                        isActive
+                          ? "bg-gradient-to-br from-[#3C3489] to-[#534AB7] border-transparent text-white scale-[1.02] shadow-lg"
+                          : "bg-white border-slate-100 hover:bg-slate-50"
                       )}
                     >
                       <div className="flex items-center justify-between">
-                        <Icon className={cn("w-5 h-5", isActive ? "text-purple-400" : "text-slate-400")} />
+                        <Icon className={cn("w-5 h-5", isActive ? "text-white/80" : "text-slate-400")} />
                         <span className={cn("text-[9px] font-black uppercase px-2 py-0.5 rounded-full", isActive ? "bg-white/20 text-white" : "bg-slate-50 text-slate-500")}>
                           {totalCount}
                         </span>
                       </div>
                       <div>
                         <h4 className="text-[10px] font-black uppercase tracking-wider">{dept.label}</h4>
-                        <p className={cn("text-[9px] font-bold mt-1", isActive ? "text-slate-350" : "text-slate-400")}>
+                        <p className={cn("text-[9px] font-bold mt-1", isActive ? "text-white/60" : "text-slate-400")}>
                           Hold: {holdCount} • Done: {completedCount}
                         </p>
                       </div>
@@ -736,8 +759,10 @@ export default function AdminDashboard() {
                     key={sec.id}
                     onClick={() => setSelectedSection(sec.id as any)}
                     className={cn(
-                      "px-4 py-1.5 rounded-lg font-bold uppercase tracking-wider text-[10px]",
-                      selectedSection === sec.id ? "bg-slate-100 text-slate-800" : "text-slate-450 hover:text-slate-700"
+                      "px-4 py-1.5 rounded-lg font-bold uppercase tracking-wider text-[10px] transition-all cursor-pointer border-none",
+                      selectedSection === sec.id
+                        ? "bg-gradient-to-r from-[#3C3489] to-[#534AB7] text-white shadow-sm"
+                        : "text-slate-450 hover:text-slate-700 bg-transparent"
                     )}
                   >
                     {sec.label}
@@ -797,22 +822,186 @@ export default function AdminDashboard() {
               </div>
             </div>
           ) : activeTab === 'logs' ? (
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm text-left max-w-4xl">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-black text-slate-800 uppercase tracking-widest text-xs">Security System Logs</h3>
-                <span className="text-[10px] bg-red-50 text-red-700 font-bold px-2 py-0.5 rounded uppercase">Encrypted logs</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl">
+              {/* Column 1: Live Login Logs with GPS */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm text-left">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-black text-slate-800 uppercase tracking-widest text-xs">Live Login Locations</h3>
+                  <span className="text-[9px] bg-emerald-50 text-emerald-700 font-black px-2 py-0.5 rounded-full uppercase border border-emerald-200">GPS Tracked</span>
+                </div>
+                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                  {loginLogs.length === 0 ? (
+                    <p className="text-center text-slate-400 italic text-xs py-8">No login logs recorded yet.</p>
+                  ) : (
+                    [...loginLogs]
+                      .sort((a, b) => b.timestamp - a.timestamp)
+                      .map((log) => (
+                        <div key={log.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-2 transition-all hover:shadow-sm">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="text-xs font-black text-slate-800">{log.userName}</p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{log.userRole} · {log.userEmail}</p>
+                            </div>
+                            <span className="text-[9px] text-slate-400 font-bold tabular-nums">
+                              {new Date(log.timestamp).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', day: '2-digit', month: 'short' })}
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 text-[10px] bg-indigo-50/50 text-indigo-700 p-2.5 rounded-xl border border-indigo-100">
+                            {log.latitude && log.longitude ? (
+                              <>
+                                <Globe className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                <a 
+                                  href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="font-bold underline hover:text-indigo-800 flex items-center gap-1"
+                                >
+                                  📍 View Location: {log.latitude.toFixed(6)}, {log.longitude.toFixed(6)}
+                                </a>
+                              </>
+                            ) : (
+                              <>
+                                <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="font-semibold text-slate-500">GPS location not shared</span>
+                              </>
+                            )}
+                          </div>
+                          <p className="text-[9px] text-slate-450 truncate" title={log.userAgent}>Device: {log.userAgent}</p>
+                        </div>
+                      ))
+                  )}
+                </div>
               </div>
-              <div className="space-y-4">
-                {MOCK_LOGS.map((log) => (
-                  <div key={log.id} className="p-4 rounded-2xl bg-slate-50/50 border border-slate-100 flex items-start gap-3">
-                    <Clock className="w-4 h-4 text-slate-450 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">{log.action}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">{log.details}</p>
-                      <span className="text-[9px] text-slate-400 font-medium uppercase block mt-1.5">{log.user} • {log.time}</span>
+
+              {/* Column 2: System Audit Logs */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm text-left">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-black text-slate-800 uppercase tracking-widest text-xs">Security System Logs</h3>
+                  <span className="text-[10px] bg-red-50 text-red-700 font-bold px-2 py-0.5 rounded uppercase">Encrypted logs</span>
+                </div>
+                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                  {MOCK_LOGS.map((log) => (
+                    <div key={log.id} className="p-4 rounded-2xl bg-slate-50/50 border border-slate-100 flex items-start gap-3">
+                      <Clock className="w-4 h-4 text-slate-455 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">{log.action}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{log.details}</p>
+                        <span className="text-[9px] text-slate-400 font-medium uppercase block mt-1.5">{log.user} • {log.time}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'leaves' ? (
+            <div className="space-y-6 text-left">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black text-slate-850 tracking-tight">Staff Leave Logs</h2>
+                  <p className="text-xs text-slate-450 mt-0.5">Monitoring all leave requests and hourly permissions</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden overflow-x-auto text-left">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 text-slate-455 font-black uppercase tracking-widest text-[9px] border-b border-slate-100">
+                    <tr>
+                      <th className="px-6 py-4">User</th>
+                      <th className="px-6 py-4">Role</th>
+                      <th className="px-6 py-4">Leave Date</th>
+                      <th className="px-6 py-4">Type</th>
+                      <th className="px-6 py-4">Details</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Created At</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 text-xs">
+                    {[...leavesList].sort((a,b) => b.createdAt - a.createdAt).map((leave) => (
+                      <tr key={leave.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 font-bold text-slate-800">{leave.userName}</td>
+                        <td className="px-6 py-4 capitalize font-semibold text-slate-500">{leave.userRole?.replace('_', ' ')}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-brand-primary">{leave.date}</td>
+                        <td className="px-6 py-4">
+                          <span className={cn(
+                            "px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border shadow-sm",
+                            leave.type === 'full_day' ? "bg-rose-50 text-rose-700 border-rose-100" :
+                            leave.type === 'half_day' ? "bg-amber-50 text-amber-700 border-amber-100" :
+                            "bg-indigo-50 text-indigo-700 border-indigo-100"
+                          )}>
+                            {leave.type === 'full_day' ? 'Full Day' : leave.type === 'half_day' ? 'Half Day' : `Permission (${leave.permissionHours} hrs)`}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 max-w-[200px] truncate text-slate-500" title={leave.reason || ''}>{leave.reason || <span className="italic text-slate-400">No reason provided</span>}</td>
+                        <td className="px-6 py-4 text-nowrap">
+                          <span className={cn(
+                            "px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border shadow-sm",
+                            leave.status === 'approved' ? "bg-green-50 text-green-700 border-green-100" :
+                            leave.status === 'rejected' ? "bg-red-50 text-red-700 border-red-100" :
+                            "bg-yellow-50 text-yellow-700 border-yellow-105"
+                          )}>
+                            {leave.status || 'pending'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-400">{new Date(leave.createdAt).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right flex justify-end items-center gap-2">
+                          {(leave.status === 'pending' || !leave.status) && (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`Approve leave request for ${leave.userName} on ${leave.date}?`)) {
+                                    try {
+                                      await updateDoc(doc(db, 'leaves', leave.id), { status: 'approved' });
+                                    } catch (e) {
+                                      alert("Failed to approve leave request.");
+                                    }
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-green-55 hover:bg-green-100 border border-green-200 text-green-700 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`Reject leave request for ${leave.userName} on ${leave.date}?`)) {
+                                    try {
+                                      await updateDoc(doc(db, 'leaves', leave.id), { status: 'rejected' });
+                                    } catch (e) {
+                                      alert("Failed to reject leave request.");
+                                    }
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-red-55 hover:bg-red-100 border border-red-200 text-red-700 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+                          <button
+                            onClick={async () => {
+                              if (confirm(`Delete leave request for ${leave.userName} on ${leave.date}?`)) {
+                                try {
+                                  await deleteDoc(doc(db, 'leaves', leave.id));
+                                } catch (e) {
+                                  alert("Failed to delete leave request.");
+                                }
+                              }
+                            }}
+                            className="p-2 hover:bg-red-50 rounded-lg text-red-500 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {leavesList.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic">No leave logs recorded yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           ) : (

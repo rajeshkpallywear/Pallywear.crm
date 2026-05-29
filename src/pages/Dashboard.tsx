@@ -24,7 +24,7 @@ import ProfileSettings from '../components/ProfileSettings';
 import InventoryManagement from '../components/InventoryManagement';
 import Logo from '../components/Logo';
 import { cn } from '../lib/utils';
-import { UserRole, Order } from '../types';
+import { UserRole, Order, OrderStatus } from '../types';
 import { downloadOrderPDF } from '../lib/pdfHelper';
 
 import AccountsDashboard from '../components/AccountsDashboard';
@@ -92,7 +92,10 @@ export default function Dashboard() {
   const defaultTab = React.useMemo(() => {
     if (!user?.role) return 'dashboard';
     const role = user.role as string;
-    if (['admin', UserRole.ADMIN, 'marketing', UserRole.MARKETING, 'user', 'order_management', UserRole.ORDER_MANAGEMENT, 'production', UserRole.PRODUCTION, 'staff', UserRole.STAFF, 'delivery', UserRole.DELIVERY, 'telecaller', UserRole.TELECALLER].includes(role)) return 'dashboard';
+    if (role === 'order_management' || role === UserRole.ORDER_MANAGEMENT) return 'order_mgmt_board';
+    if (role === 'production' || role === UserRole.PRODUCTION || role === 'staff' || role === UserRole.STAFF) return 'production_board';
+    if (role === 'delivery' || role === UserRole.DELIVERY) return 'delivery_board';
+    if (['admin', UserRole.ADMIN, 'marketing', UserRole.MARKETING, 'user', 'telecaller', UserRole.TELECALLER].includes(role)) return 'dashboard';
     if ([UserRole.DIGITIZER, 'digitizer'].includes(role)) return 'dashboard';
     if ([UserRole.DESIGNER, 'designer'].includes(role)) return 'design_staff_comm';
     if ([UserRole.ACCOUNTS, 'accounts'].includes(role)) return 'dashboard';
@@ -101,12 +104,33 @@ export default function Dashboard() {
 
   const [activeTab, setActiveTab] = React.useState<string>('dashboard');
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [prefillOrderData, setPrefillOrderData] = React.useState<any | null>(null);
+
+  const handleReorder = React.useCallback((order: Order) => {
+    setPrefillOrderData({
+      customerInfo: {
+        name: order.customerInfo.name || '',
+        companyName: order.customerInfo.companyName || '',
+        phone: order.customerInfo.phone || '',
+        address: order.customerInfo.address || '',
+      },
+      category: order.category,
+      sizeBreakdown: order.sizeBreakdown || [],
+      financials: {
+        totalAmount: order.financials?.totalAmount || 0,
+        advancePay: 0,
+      },
+      isUrgent: order.isUrgent || false,
+    });
+    setActiveTab('marketing_orders');
+  }, []);
   const [calendarMonth, setCalendarMonth] = React.useState(() => new Date());
   
   const [selectedLeaveDate, setSelectedLeaveDate] = React.useState<Date | null>(null);
   const [showLeaveModal, setShowLeaveModal] = React.useState(false);
   const [leaveType, setLeaveType] = React.useState<'half_day' | 'full_day' | 'hours_permission'>('full_day');
   const [permissionHours, setPermissionHours] = React.useState('2');
+  const [leaveReason, setLeaveReason] = React.useState('');
   const [isSavingLeave, setIsSavingLeave] = React.useState(false);
   const [leavesList, setLeavesList] = React.useState<any[]>([]);
 
@@ -131,25 +155,39 @@ export default function Dashboard() {
       const mm = String(selectedLeaveDate.getMonth() + 1).padStart(2, '0');
       const dd = String(selectedLeaveDate.getDate()).padStart(2, '0');
       const dateString = `${yyyy}-${mm}-${dd}`;
-      const docId = `${user.id}_${dateString}_${Date.now()}`;
+      
+      // Use auth.currentUser.uid as a reliable fallback since user.id may not always be set
+      const { auth: firebaseAuth } = await import('../lib/firebase');
+      const uid = user.id || firebaseAuth.currentUser?.uid;
+      if (!uid) {
+        alert("Error: Could not identify your user account. Please log out and log back in.");
+        return;
+      }
+
+      const docId = `${uid}_${dateString}_${Date.now()}`;
       
       const newLeave = {
         id: docId,
-        userId: user.id,
+        userId: uid,
         userName: user.name,
         userRole: user.role,
         date: dateString,
         type: leaveType,
         permissionHours: leaveType === 'hours_permission' ? parseInt(permissionHours, 10) || 1 : null,
+        reason: leaveReason.trim() || null,
+        status: 'pending',
         createdAt: Date.now()
       };
 
       await setDoc(doc(db, 'leaves', docId), newLeave);
       setShowLeaveModal(false);
       setSelectedLeaveDate(null);
-    } catch (err) {
+      setLeaveReason('');
+      alert("Leave request saved successfully!");
+    } catch (err: any) {
       console.error("Failed to save leave:", err);
-      alert("Failed to save leave request.");
+      const detail = err?.message || String(err);
+      alert(`Failed to save leave request: ${detail.includes('permission') ? 'Permission denied — please contact admin.' : detail.slice(0, 80)}`);
     } finally {
       setIsSavingLeave(false);
     }
@@ -296,7 +334,13 @@ export default function Dashboard() {
     return () => window.removeEventListener('open-conversations-feed', handleOpenFeed);
   }, []);
 
-  const selectTab = (tab: typeof activeTab) => { setActiveTab(tab); setIsMobileOpen(false); };
+  const selectTab = (tab: typeof activeTab) => { 
+    if (tab === 'marketing_orders') {
+      setPrefillOrderData(null);
+    }
+    setActiveTab(tab); 
+    setIsMobileOpen(false); 
+  };
 
   const handleUpdateOrder = async (id: string, updates: Partial<Order>) => {
     try { await updateOrder(id, updates); }
@@ -314,17 +358,29 @@ export default function Dashboard() {
     catch (error) { console.error('Failed to delete order:', error); alert('Delete failed.'); }
   };
 
+  const handleOpenOrderDetail = React.useCallback((order: Order) => {
+    if (order.status === OrderStatus.DELIVERED) {
+      const allowedRoles = ['admin', 'accounts', 'order_management', UserRole.ADMIN, UserRole.ACCOUNTS, UserRole.ORDER_MANAGEMENT];
+      if (!user?.role || !allowedRoles.includes(user.role)) {
+        alert("Access Denied: Completed orders can only be viewed by Admin, Accounts, or Order Management.");
+        return;
+      }
+    }
+    setSelectedDetailOrder(order);
+  }, [user]);
+
   const query = searchQuery.toLowerCase().trim();
 
   const filteredOrders = React.useMemo(() => {
     if (!query) return myOrders;
     return myOrders.filter(o => {
       const name = o.customerInfo?.name?.toLowerCase() || '';
+      const company = o.customerInfo?.companyName?.toLowerCase() || '';
       const phone = o.customerInfo?.phone?.toLowerCase() || '';
       const id = o.id?.toLowerCase() || '';
       const cat = o.category?.toLowerCase() || '';
       const status = o.status?.toLowerCase() || '';
-      return name.includes(query) || phone.includes(query) || id.includes(query) || cat.includes(query) || status.includes(query);
+      return name.includes(query) || company.includes(query) || phone.includes(query) || id.includes(query) || cat.includes(query) || status.includes(query);
     });
   }, [myOrders, query]);
 
@@ -365,7 +421,7 @@ export default function Dashboard() {
       groups.push({
         title: 'Core Workflow',
         items: [
-          { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+          { id: 'delivery_board', label: 'Delivery Board', icon: Truck },
           { id: 'calendar', label: 'Calendar', icon: Calendar },
           { id: 'analytics', label: 'Graph', icon: BarChart3 },
         ]
@@ -374,7 +430,7 @@ export default function Dashboard() {
       groups.push({
         title: 'Core Workflow',
         items: [
-          { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+          { id: 'production_board', label: 'Production Board', icon: Factory },
           { id: 'calendar', label: 'Calendar', icon: Calendar },
           { id: 'analytics', label: 'Graph', icon: BarChart3 },
         ]
@@ -392,14 +448,13 @@ export default function Dashboard() {
         title: 'Lead Desk',
         items: [
           { id: 'add_leads', label: 'Add Lead', icon: Plus },
-          { id: 'assign_leads', label: 'Assign Leads', icon: Users },
         ]
       });
     } else if (isOrderMgmt) {
       groups.push({
         title: 'Main',
         items: [
-          { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+          { id: 'order_mgmt_board', label: 'Order Board', icon: ClipboardCheck },
           { id: 'calendar', label: 'Calendar', icon: Calendar },
           { id: 'analytics', label: 'Graph', icon: BarChart3 },
         ]
@@ -420,12 +475,19 @@ export default function Dashboard() {
           { id: 'invoices', label: 'Invoices', icon: DollarSign },
           { id: 'marketing_orders', label: 'Create Order', icon: ShoppingBag },
           { id: 'add_leads', label: 'Add Leads', icon: Plus },
+          { id: 'inventory', label: 'Inventory', icon: Package },
         ]
       });
     }
 
     if (role === UserRole.DIGITIZER || role === 'digitizer') {
-      groups.push({ title: 'Main', items: [{ id: 'dashboard', label: 'Digitizing Hub', icon: Activity }] });
+      groups.push({
+        title: 'Main',
+        items: [
+          { id: 'dashboard', label: 'Digitizing Hub', icon: Activity },
+          { id: 'calendar', label: 'Calendar', icon: Calendar }
+        ]
+      });
     }
 
     if (role === UserRole.ACCOUNTS || role === 'accounts') {
@@ -435,6 +497,7 @@ export default function Dashboard() {
           { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
           { id: 'accounts_billing', label: 'Accounts Dashboard', icon: ClipboardCheck },
           { id: 'accounts_calendar', label: 'Intake Calendar', icon: Calendar },
+          { id: 'calendar', label: 'Leave Calendar', icon: Calendar },
           { id: 'accounts_graph', label: 'Performance Graph', icon: BarChart3 },
         ]
       });
@@ -458,7 +521,6 @@ export default function Dashboard() {
         title: 'Design Desk',
         items: [
           { id: 'design_staff_comm', label: 'Staff Conversation', icon: MessageSquare },
-          { id: 'design_om_comm', label: 'Order Management', icon: FolderOpen },
           { id: 'calendar', label: 'Intake Calendar', icon: Calendar },
           { id: 'analytics', label: 'Performance Graph', icon: BarChart3 },
         ]
@@ -476,13 +538,19 @@ export default function Dashboard() {
 
   const allNavItems = navGroups.flatMap(g => g.items);
 
+  const showAmountDetails = React.useMemo(() => {
+    return ['admin', 'accounts', 'order_management', 'delivery', UserRole.ADMIN, UserRole.ACCOUNTS, UserRole.ORDER_MANAGEMENT, UserRole.DELIVERY].includes(user?.role || '');
+  }, [user?.role]);
+
   // === COMPUTED STATS ===
   const totalOrderValue = filteredOrders.reduce((s, o) => s + (o.financials?.totalAmount || 0), 0);
   const holdOrders = filteredOrders.filter(o => ['hold', 'HOLD'].includes(o.status));
   const completedOrders = filteredOrders.filter(o => ['delivered', 'DELIVERED'].includes(o.status));
   const processOrders = filteredOrders.filter(o => !['hold', 'HOLD', 'delivered', 'DELIVERED', 'draft', 'DRAFT', 'pending', 'PENDING'].includes(o.status));
-  const now7 = Date.now();
-  const recentOrders = filteredOrders.filter(o => ['pending', 'PENDING', 'draft', 'DRAFT'].includes(o.status) && now7 - o.createdAt < 7 * 24 * 60 * 60 * 1000);
+  const recentOrders = filteredOrders.filter(o => [
+    'order_management', 'production', 'delivery', 'pending', 'draft',
+    OrderStatus.ORDER_MANAGEMENT, OrderStatus.PRODUCTION, OrderStatus.DELIVERY, OrderStatus.PENDING, OrderStatus.DRAFT
+  ].includes(o.status));
 
   const hourOfDay = new Date().getHours();
   const greeting = hourOfDay < 12 ? 'Good morning' : hourOfDay < 17 ? 'Good afternoon' : 'Good evening';
@@ -611,23 +679,6 @@ export default function Dashboard() {
               />
             </div>
 
-            {/* Export */}
-            <button
-              id="header-export-btn"
-              onClick={() => {
-                const rows = [['Client', 'Company', 'Value', 'Status'], ...filteredLeads.map(l => [l.name, l.companyName, l.totalOrderValue, l.leadType])];
-                const csv = rows.map(r => r.join(',')).join('\n');
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = 'pallywear_export.csv'; a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-brand-primary text-white rounded-xl text-xs font-bold hover:bg-brand-primary/90 transition-colors shadow-sm"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Export
-            </button>
-
             {/* Bell Notifications Dropdown */}
             <div className="relative">
               <button
@@ -723,37 +774,7 @@ export default function Dashboard() {
                   />
                 );
               }
-              if (role === 'order_management' || role === UserRole.ORDER_MANAGEMENT) {
-                return (
-                  <OrderManagementDashboard
-                    orders={orders}
-                    inventory={inventory}
-                    onUpdateOrder={handleUpdateOrder}
-                    onDeleteOrder={handleDeleteOrder}
-                    isAdmin={user?.role === 'admin'}
-                  />
-                );
-              }
-              if (role === 'production' || role === UserRole.PRODUCTION) {
-                return (
-                  <ProductionDashboard
-                    orders={orders}
-                    onUpdateOrder={handleUpdateOrder}
-                    onDeleteOrder={handleDeleteOrder}
-                    isAdmin={user?.role === 'admin'}
-                  />
-                );
-              }
-              if (role === 'delivery' || role === UserRole.DELIVERY) {
-                return (
-                  <DeliveryDashboard
-                    orders={orders}
-                    onUpdateOrder={handleUpdateOrder}
-                    onDeleteOrder={handleDeleteOrder}
-                    isAdmin={user?.role === 'admin'}
-                  />
-                );
-              }
+              // Custom dashboards are rendered on specific tab matches in the else branch below
               if (role === 'designer' || role === UserRole.DESIGNER) {
                 return (
                   <DesignDashboard
@@ -786,13 +807,57 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* 4 Order Category Icons (Click to view details) */}
-                  <div className="grid grid-cols-4 gap-4 max-w-md">
+                  {/* Summary Stats Section (Icon-only) */}
+                  <div className="flex gap-4 mb-6">
                     {([
-                      { key: 'recent' as const, label: 'Recent Orders', count: recentOrders.length as any, icon: ShoppingBag, gradient: 'from-indigo-500 to-violet-600', light: 'bg-indigo-50 text-indigo-700 border-indigo-100', textColor: 'text-indigo-600' },
-                      { key: 'hold' as const, label: 'Hold Orders', count: holdOrders.length as any, icon: PauseCircle, gradient: 'from-amber-500 to-orange-500', light: 'bg-amber-50 text-amber-700 border-amber-100', textColor: 'text-amber-600' },
-                      { key: 'process' as const, label: 'In Process', count: processOrders.length as any, icon: RefreshCw, gradient: 'from-blue-500 to-cyan-500', light: 'bg-blue-50 text-blue-700 border-blue-100', textColor: 'text-blue-650' },
-                      { key: 'completed' as const, label: 'Completed', count: completedOrders.length as any, icon: CheckCircle2, gradient: 'from-emerald-500 to-teal-500', light: 'bg-emerald-50 text-emerald-700 border-emerald-100', textColor: 'text-emerald-600' },
+                      {
+                        key: 'recent' as const,
+                        label: 'Order Management',
+                        title: 'Order Management Board',
+                        count: recentOrders.length,
+                        icon: ShoppingBag,
+                        activeBg: 'bg-brand-primary text-white border-brand-primary shadow-md scale-105',
+                        hoverBg: 'hover:border-brand-primary/50',
+                        badgeActive: 'bg-white text-brand-primary border-white',
+                        badgeNormal: 'bg-brand-primary text-white border-brand-primary',
+                        navTab: 'order_mgmt_board',
+                      },
+                      {
+                        key: 'hold' as const,
+                        label: 'Hold Orders',
+                        title: 'Hold Orders',
+                        count: holdOrders.length,
+                        icon: PauseCircle,
+                        activeBg: 'bg-amber-500 text-white border-amber-500 shadow-md scale-105',
+                        hoverBg: 'hover:border-amber-400',
+                        badgeActive: 'bg-white text-amber-500 border-white',
+                        badgeNormal: 'bg-amber-500 text-white border-amber-500',
+                        navTab: null,
+                      },
+                      {
+                        key: 'process' as const,
+                        label: 'Production',
+                        title: 'Production Board',
+                        count: processOrders.length,
+                        icon: RefreshCw,
+                        activeBg: 'bg-blue-500 text-white border-blue-500 shadow-md scale-105',
+                        hoverBg: 'hover:border-blue-400',
+                        badgeActive: 'bg-white text-blue-500 border-white',
+                        badgeNormal: 'bg-blue-500 text-white border-blue-500',
+                        navTab: 'production_board',
+                      },
+                      {
+                        key: 'completed' as const,
+                        label: 'Delivery',
+                        title: 'Delivery Board',
+                        count: completedOrders.length,
+                        icon: CheckCircle2,
+                        activeBg: 'bg-emerald-500 text-white border-emerald-500 shadow-md scale-105',
+                        hoverBg: 'hover:border-emerald-400',
+                        badgeActive: 'bg-white text-emerald-500 border-white',
+                        badgeNormal: 'bg-emerald-500 text-white border-emerald-500',
+                        navTab: 'delivery_board',
+                      },
                     ]).map(cat => {
                       const Icon = cat.icon;
                       const isOpen = selectedOrderCategory === cat.key;
@@ -800,36 +865,28 @@ export default function Dashboard() {
                         <button
                           key={cat.key}
                           type="button"
-                          onClick={() => setSelectedOrderCategory(isOpen ? null : cat.key)}
+                          onClick={() => {
+                            if (cat.navTab && user?.role !== 'user') {
+                              selectTab(cat.navTab);
+                            } else {
+                              setSelectedOrderCategory(isOpen ? null : cat.key);
+                            }
+                          }}
                           className={cn(
-                            'aspect-square rounded-2xl flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm border outline-none relative group',
-                            isOpen
-                              ? `bg-gradient-to-br ${cat.gradient} border-transparent text-white shadow-lg`
-                              : 'bg-white border-slate-200 hover:border-slate-300'
+                            "w-14 h-14 rounded-full border transition-all flex items-center justify-center relative shadow-sm cursor-pointer border-dashed outline-none",
+                            isOpen ? cat.activeBg : `bg-white border-gray-200 ${cat.hoverBg}`
                           )}
-                          title={`View ${cat.label}`}
+                          title={cat.title}
                         >
-                          <div className={cn(
-                            'w-10 h-10 rounded-xl flex items-center justify-center transition-all',
-                            isOpen ? 'bg-white/20 text-white' : cat.light
-                          )}>
-                            <Icon className="w-5 h-5" />
-                          </div>
-
-                          {/* Badge showing count if non-zero */}
+                          <Icon size={20} />
                           {cat.count > 0 && (
                             <span className={cn(
-                              'absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border shadow-sm',
-                              isOpen ? 'bg-white text-slate-900 border-white' : 'bg-red-500 text-white border-red-500'
+                              "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border shadow-sm",
+                              isOpen ? cat.badgeActive : cat.badgeNormal
                             )}>
                               {cat.count}
                             </span>
                           )}
-
-                          {/* Tooltip to show category name */}
-                          <span className="absolute bottom-[-32px] left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-10">
-                            {cat.label}
-                          </span>
                         </button>
                       );
                     })}
@@ -865,18 +922,18 @@ export default function Dashboard() {
                                 <th className="px-6 py-3">Status</th>
                                 <th className="px-6 py-3">Actions</th>
                                 <th className="px-6 py-3">Date</th>
-                                <th className="px-6 py-3">Amount</th>
+                                {showAmountDetails && <th className="px-6 py-3">Amount</th>}
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50 text-xs">
                               {catOrders.length === 0 ? (
-                                <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-400 italic">No orders in this category.</td></tr>
+                                <tr><td colSpan={showAmountDetails ? 8 : 7} className="px-6 py-12 text-center text-slate-400 italic">No orders in this category.</td></tr>
                               ) : catOrders.slice(0, 15).map(o => (
                                 <tr
                                   key={o.id}
                                   onClick={() => {
                                     if (selectedOrderCategory !== 'process') {
-                                      setSelectedDetailOrder(o);
+                                      handleOpenOrderDetail(o);
                                     }
                                   }}
                                   className={cn(
@@ -925,7 +982,9 @@ export default function Dashboard() {
                                     </div>
                                   </td>
                                   <td className="px-6 py-3.5 text-slate-400">{new Date(o.createdAt).toLocaleDateString()}</td>
-                                  <td className="px-6 py-3.5 font-black text-slate-900">₹{(o.financials?.totalAmount || 0).toLocaleString()}</td>
+                                  {showAmountDetails && (
+                                    <td className="px-6 py-3.5 font-black text-slate-900">₹{(o.financials?.totalAmount || 0).toLocaleString()}</td>
+                                  )}
                                 </tr>
                               ))}
                             </tbody>
@@ -1036,7 +1095,7 @@ export default function Dashboard() {
                             <tr>
                               <th className="px-6 py-3">Client</th>
                               <th className="px-6 py-3">Company</th>
-                              <th className="px-6 py-3">Value</th>
+                              {showAmountDetails && <th className="px-6 py-3">Value</th>}
                               <th className="px-6 py-3">Type</th>
                             </tr>
                           </thead>
@@ -1055,7 +1114,9 @@ export default function Dashboard() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-3.5 text-slate-500 font-medium">{l.companyName}</td>
-                                <td className="px-6 py-3.5 font-black text-slate-900">₹{l.totalOrderValue.toLocaleString()}</td>
+                                {showAmountDetails && (
+                                  <td className="px-6 py-3.5 font-black text-slate-900">₹{l.totalOrderValue.toLocaleString()}</td>
+                                )}
                                 <td className="px-6 py-3.5">
                                   <span className={cn('px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border',
                                     l.leadType === 'Hot' ? 'bg-red-50 text-red-700 border-red-100' :
@@ -1068,7 +1129,7 @@ export default function Dashboard() {
                               </tr>
                             ))}
                             {filteredLeads.length === 0 && (
-                              <tr><td colSpan={4} className="px-6 py-10 text-center text-slate-400 italic">No active clients yet.</td></tr>
+                              <tr><td colSpan={showAmountDetails ? 4 : 3} className="px-6 py-10 text-center text-slate-400 italic">No active clients yet.</td></tr>
                             )}
                           </tbody>
                         </table>
@@ -1089,7 +1150,7 @@ export default function Dashboard() {
                       </div>
                       <div className="space-y-3">
                         {myOrders.slice().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6).map(o => (
-                          <div key={o.id} onClick={() => setSelectedDetailOrder(o)} className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors">
+                          <div key={o.id} onClick={() => handleOpenOrderDetail(o)} className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors">
                             <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-[10px] font-black',
                               o.status === 'delivered' || o.status === 'DELIVERED' ? 'bg-emerald-100 text-emerald-700' :
                                 o.status === 'hold' || o.status === 'HOLD' ? 'bg-amber-105 text-amber-700' :
@@ -1111,13 +1172,73 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Lead Manager */}
-                  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                    <div className="mb-4">
-                      <h3 className="text-sm font-black text-slate-900">Lead Management</h3>
-                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">Manage, qualify, and convert your leads</p>
+                  {/* Lead Manager & Side Inventory Stock */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+                      <div className="mb-4">
+                        <h3 className="text-sm font-black text-slate-900">Lead Management</h3>
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">Manage, qualify, and convert your leads</p>
+                      </div>
+                      <LeadManager />
                     </div>
-                    <LeadManager />
+
+                    <div className="lg:col-span-1 bg-white rounded-3xl border border-slate-200 shadow-sm p-6 flex flex-col h-fit">
+                      <div className="mb-4">
+                        <h3 className="text-sm font-black text-slate-900">Warehouse Stock</h3>
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">Active inventory stock levels</p>
+                      </div>
+                      {(() => {
+                        const productStock = Object.values((inventory || []).reduce((acc: any, item: any) => {
+                          const key = `${item.product}-${item.productType}-${item.sleeve || 'none'}-${item.pocket || 'none'}`;
+                          if (!acc[key]) {
+                            acc[key] = {
+                              id: key,
+                              name: item.product,
+                              type: item.productType,
+                              sleeve: item.sleeve,
+                              pocket: item.pocket,
+                              stock: 0,
+                            };
+                          }
+                          if (item.type === 'inward') acc[key].stock += item.quantity;
+                          else acc[key].stock -= item.quantity;
+                          return acc;
+                        }, {})) as any[];
+
+                        let acceptedIds: string[] = [];
+                        try {
+                          const saved = localStorage.getItem('pallywear_accepted_products');
+                          if (saved) acceptedIds = JSON.parse(saved);
+                        } catch (e) {}
+
+                        const acceptedStock = productStock.filter(p => acceptedIds.includes(p.id));
+
+                        return acceptedStock.length > 0 ? (
+                          <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                            {acceptedStock.map(prod => (
+                              <div key={prod.id} className="p-3 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between group hover:border-slate-200 transition-all animate-in fade-in duration-200">
+                                <div className="min-w-0">
+                                  <h4 className="text-xs font-bold text-slate-800 truncate">{prod.name}</h4>
+                                  <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5 truncate">{prod.type}</p>
+                                </div>
+                                <span className={cn(
+                                  "text-[10px] font-black px-2 py-0.5 rounded-full border shrink-0",
+                                  prod.stock > 10 ? "bg-green-50 text-green-700 border-green-100" :
+                                  prod.stock > 0 ? "bg-amber-50 text-amber-700 border-amber-100" :
+                                  "bg-rose-50 text-rose-700 border-rose-100"
+                                )}>
+                                  {prod.stock} left
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <p className="text-xs text-slate-400 italic">No products approved for display.</p>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
               );
@@ -1176,9 +1297,16 @@ export default function Dashboard() {
                       <div 
                         key={d} 
                         onClick={() => {
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          const dateToCompare = new Date(year, month, d);
+                          if (dateToCompare < today) {
+                            return;
+                          }
                           setSelectedLeaveDate(dayDate);
                           setLeaveType('full_day');
                           setPermissionHours('2');
+                          setLeaveReason('');
                           setShowLeaveModal(true);
                         }}
                         className={cn('h-28 p-2 border-b border-r border-slate-50 flex flex-col gap-1 overflow-hidden transition-colors cursor-pointer', isToday ? 'bg-indigo-50' : 'hover:bg-slate-50/60')}
@@ -1189,18 +1317,27 @@ export default function Dashboard() {
 
                         {/* Leave Logs list */}
                         {dayLeaves.map(l => {
+                          const isApproved = l.status === 'approved' || !l.status;
+                          const isRejected = l.status === 'rejected';
+                          if (isRejected) return null;
+
                           let label = '';
                           let colorClass = '';
                           if (l.type === 'full_day') {
                             label = `Full Day (${l.userName})`;
-                            colorClass = 'bg-rose-50 text-rose-700 border-rose-100';
+                            colorClass = isApproved ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-slate-100 text-slate-500 border-slate-200 border-dashed';
                           } else if (l.type === 'half_day') {
                             label = `Half Day (${l.userName})`;
-                            colorClass = 'bg-amber-50 text-amber-700 border-amber-100';
+                            colorClass = isApproved ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-slate-100 text-slate-500 border-slate-200 border-dashed';
                           } else {
                             label = `Perm: ${l.permissionHours}h (${l.userName})`;
-                            colorClass = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+                            colorClass = isApproved ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-slate-100 text-slate-500 border-slate-200 border-dashed';
                           }
+
+                          if (!isApproved) {
+                            label = `[Pending] ${label}`;
+                          }
+
                           return (
                             <div 
                               key={l.id} 
@@ -1211,15 +1348,15 @@ export default function Dashboard() {
                                 }
                               }}
                               className={cn("text-[8px] font-black px-1.5 py-0.5 rounded-md truncate border cursor-pointer hover:opacity-80 transition-opacity", colorClass)}
-                              title={`${l.userName} (${l.userRole}) leave. Click to delete.`}
+                              title={`${l.userName} (${l.userRole}) leave${l.reason ? `: ${l.reason}` : ''}. Status: ${l.status || 'pending'}. Click to delete.`}
                             >
-                              {l.userName ? label : 'Leave log'}
+                              {l.userName ? `${label}${l.reason ? ` (${l.reason})` : ''}` : 'Leave log'}
                             </div>
                           );
                         })}
 
                         {dayOrders.slice(0, 2).map(o => (
-                          <div key={o.id} onClick={(e) => { e.stopPropagation(); setSelectedDetailOrder(o); }} className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 truncate border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors">
+                          <div key={o.id} onClick={(e) => { e.stopPropagation(); handleOpenOrderDetail(o); }} className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 truncate border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition-colors">
                             #{o.id.slice(-4)} {o.customerInfo.name}
                           </div>
                         ))}
@@ -1488,7 +1625,7 @@ export default function Dashboard() {
                   </thead>
                   <tbody className="divide-y divide-slate-50 text-xs">
                     {orders.length > 0 ? orders.map(order => (
-                      <tr key={order.id} onClick={() => setSelectedDetailOrder(order)} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
+                      <tr key={order.id} onClick={() => handleOpenOrderDetail(order)} className="hover:bg-slate-50/50 cursor-pointer transition-colors">
                         <td className="px-6 py-3.5 font-mono font-bold text-slate-700">#{order.id.slice(-8)}</td>
                         <td className="px-6 py-3.5 font-bold text-slate-900">{order.customerInfo.name}</td>
                         <td className="px-6 py-3.5 font-medium text-slate-500">{order.category}</td>
@@ -1509,9 +1646,16 @@ export default function Dashboard() {
 
             /* ==================== OTHER TABS ==================== */
           ) : activeTab === 'inventory' ? (
-            <InventoryManagement userRole={user?.role as any} />
+            <InventoryManagement userRole={['admin', 'order_management', UserRole.ADMIN, UserRole.ORDER_MANAGEMENT].includes(user?.role as any) ? user?.role : 'staff'} />
           ) : activeTab === 'marketing_orders' ? (
-            <NewOrderForm onCreateOrder={handleCreateOrder} onSuccessRedirect={() => setActiveTab('dashboard')} />
+            <NewOrderForm
+              onCreateOrder={handleCreateOrder}
+              onSuccessRedirect={() => {
+                setPrefillOrderData(null);
+                setActiveTab('dashboard');
+              }}
+              initialData={prefillOrderData}
+            />
           ) : activeTab === 'add_leads' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
@@ -1530,14 +1674,14 @@ export default function Dashboard() {
               user={user}
               activeChannel={activeTab === 'design_om_comm' ? 'order_management' : 'staff'}
             />
-          ) : user?.role === UserRole.ORDER_MANAGEMENT || user?.role === 'order_management' ? (
-            <OrderManagementDashboard orders={orders} inventory={inventory} onUpdateOrder={handleUpdateOrder} onDeleteOrder={handleDeleteOrder} isAdmin={user?.role === 'admin'} />
+          ) : activeTab === 'order_mgmt_board' ? (
+            <OrderManagementDashboard orders={orders} inventory={inventory} onUpdateOrder={handleUpdateOrder} onDeleteOrder={handleDeleteOrder} isAdmin={user?.role === 'admin'} onReorder={handleReorder} />
           ) : activeTab === 'production_board' ? (
-            <ProductionDashboard orders={orders} onUpdateOrder={handleUpdateOrder} onDeleteOrder={handleDeleteOrder} isAdmin={user?.role === 'admin'} />
+            <ProductionDashboard orders={orders} onUpdateOrder={handleUpdateOrder} onDeleteOrder={handleDeleteOrder} isAdmin={user?.role === 'admin'} onReorder={handleReorder} />
           ) : user?.role === UserRole.DIGITIZER || user?.role === 'digitizer' ? (
             <DigitizingDashboard orders={orders} onUpdateOrder={handleUpdateOrder} isAdmin={user?.role === 'admin'} />
-          ) : user?.role === UserRole.DELIVERY || user?.role === 'delivery' || activeTab === 'delivery_board' ? (
-            <DeliveryDashboard orders={orders} onUpdateOrder={handleUpdateOrder} onDeleteOrder={handleDeleteOrder} isAdmin={user?.role === 'admin'} />
+          ) : activeTab === 'delivery_board' ? (
+            <DeliveryDashboard orders={orders} onUpdateOrder={handleUpdateOrder} onDeleteOrder={handleDeleteOrder} isAdmin={user?.role === 'admin'} onReorder={handleReorder} />
           ) : (
             <div className="space-y-6">
               <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
@@ -1631,6 +1775,7 @@ export default function Dashboard() {
           order={selectedDetailOrder}
           onClose={() => setSelectedDetailOrder(null)}
           isAdmin={user?.role === 'admin'}
+          onReorder={handleReorder}
           onUpdateOrder={async (id, updates) => {
             await handleUpdateOrder(id, updates);
             setSelectedDetailOrder(prev => prev && prev.id === id ? { ...prev, ...updates } : null);
@@ -1694,6 +1839,18 @@ export default function Dashboard() {
                     />
                   </div>
                 )}
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Reason for Leave</label>
+                  <textarea
+                    rows={2}
+                    value={leaveReason}
+                    onChange={(e) => setLeaveReason(e.target.value)}
+                    placeholder="Provide a brief reason..."
+                    className="border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-50/40 placeholder:text-slate-400"
+                    required
+                  />
+                </div>
 
                 <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
                   <button

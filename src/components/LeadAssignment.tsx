@@ -20,7 +20,7 @@ import {
 export default function LeadAssignment() {
   const { leads, updateLead } = useLeads();
   const { registeredUsers } = useAuth();
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
   const [heatFilter, setHeatFilter] = useState<'all' | 'Hot' | 'Warm' | 'Cold'>('all');
@@ -40,7 +40,7 @@ export default function LeadAssignment() {
         createdBy: assignee.id,
         createdByName: assignee.name
       });
-      
+
       setSuccessMessage(`Lead assigned to ${assignee.name} successfully!`);
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -92,7 +92,7 @@ export default function LeadAssignment() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      
+
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -116,13 +116,13 @@ export default function LeadAssignment() {
 
       {/* Leads Table Container */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        
+
         {/* Filter Toolbar */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-6 border-b border-slate-100 bg-slate-50/50">
-          
+
           {/* Quick Filters */}
           <div className="flex flex-wrap items-center gap-2">
-            
+
             {/* Status Selectors */}
             <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
               {([
@@ -231,8 +231,8 @@ export default function LeadAssignment() {
                         <span className={cn(
                           'px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border',
                           lead.leadType === 'Hot' ? 'bg-red-50 text-red-700 border-red-100' :
-                          lead.leadType === 'Warm' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                          'bg-slate-100 text-slate-550 border-slate-200'
+                            lead.leadType === 'Warm' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                              'bg-slate-100 text-slate-550 border-slate-200'
                         )}>
                           {lead.leadType}
                         </span>

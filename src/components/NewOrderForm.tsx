@@ -1,4 +1,4 @@
-import React, { useState, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent } from 'react';
 import { motion } from 'motion/react';
 import { Plus, Trash2, ShieldAlert, CheckCircle, FileText, X } from 'lucide-react';
 import { Order, OrderStatus, SizeBreakdown } from '../types';
@@ -10,22 +10,42 @@ import { downloadOrderPDF } from '../lib/pdfHelper';
 interface NewOrderFormProps {
   onCreateOrder: (order: Partial<Order>) => Promise<any>;
   onSuccessRedirect?: () => void;
+  initialData?: any;
 }
 
-export default function NewOrderForm({ onCreateOrder, onSuccessRedirect }: NewOrderFormProps) {
+export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initialData }: NewOrderFormProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [formData, setFormData] = useState({
-    customerName: '',
-    phone: '',
-    address: '',
-    category: CATEGORIES[0],
+    customerName: initialData?.customerInfo?.name || '',
+    companyName: initialData?.customerInfo?.companyName || '',
+    phone: initialData?.customerInfo?.phone || '',
+    address: initialData?.customerInfo?.address || '',
+    category: initialData?.category || CATEGORIES[0],
     imageAttachments: [] as string[],
     pdfAttachments: [] as string[],
-    sizeBreakdown: [] as any[],
-    totalAmount: 0,
-    advancePay: 0,
-    isUrgent: false
+    sizeBreakdown: initialData?.sizeBreakdown || [] as any[],
+    totalAmount: initialData?.financials?.totalAmount || 0,
+    advancePay: initialData?.financials?.advancePay || 0,
+    isUrgent: initialData?.isUrgent || false
   });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        customerName: initialData.customerInfo?.name || '',
+        companyName: initialData.customerInfo?.companyName || '',
+        phone: initialData.customerInfo?.phone || '',
+        address: initialData.customerInfo?.address || '',
+        category: initialData.category || CATEGORIES[0],
+        imageAttachments: [] as string[],
+        pdfAttachments: [] as string[],
+        sizeBreakdown: initialData.sizeBreakdown || [] as any[],
+        totalAmount: initialData.financials?.totalAmount || 0,
+        advancePay: initialData.financials?.advancePay || 0,
+        isUrgent: initialData.isUrgent || false
+      });
+    }
+  }, [initialData]);
 
   const getMaterialsForCategory = (category: string) => {
     switch (category) {
@@ -115,6 +135,7 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect }: NewOr
   const resetForm = () => {
     setFormData({
       customerName: '',
+      companyName: '',
       phone: '',
       address: '',
       category: CATEGORIES[0],
@@ -143,7 +164,8 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect }: NewOr
       customerInfo: {
         name: formData.customerName,
         phone: formData.phone,
-        address: formData.address
+        address: formData.address,
+        companyName: formData.companyName
       },
       details: {},
       sizeBreakdown: formData.sizeBreakdown,
@@ -203,7 +225,7 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect }: NewOr
         {/* Customer Information Section */}
         <div className="space-y-4">
           <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">1. Customer Credentials</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Customer Name</label>
               <input
@@ -213,6 +235,17 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect }: NewOr
                 placeholder="Full client name"
                 value={formData.customerName}
                 onChange={e => setFormData(prev => ({ ...prev, customerName: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Company Name</label>
+              <input
+                type="text"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-900 focus:bg-white outline-none font-medium text-slate-900 transition-all"
+                placeholder="Company/Brand name"
+                value={formData.companyName}
+                onChange={e => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
               />
             </div>
 

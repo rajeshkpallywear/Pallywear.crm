@@ -157,8 +157,10 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
   const staffOrderItems = orders
     .filter(o => {
       // Show orders currently in design or hold stage, where they originated from Staff desk
-      // and aren't locked to other designers.
-      return (o.status === OrderStatus.DESIGN || o.status === OrderStatus.HOLD) && !isAssignedToOther(o.assignedDesigner || '');
+      // and aren't locked to other designers, or completed ones assigned to this designer.
+      const isCompleted = ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.DESIGN, OrderStatus.HOLD].includes(o.status);
+      const isMyCompleted = isCompleted && o.assignedDesigner && o.assignedDesigner.toLowerCase().includes(designerName.toLowerCase());
+      return (o.status === OrderStatus.DESIGN || o.status === OrderStatus.HOLD || isMyCompleted) && !isAssignedToOther(o.assignedDesigner || '');
     })
     .map(o => {
       let isCompleted = false;
@@ -182,7 +184,9 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
         isCompleted: isCompleted,
         createdAt: o.createdAt,
         staffImages: o.staffImages || [],
-        staffPdfs: o.staffPdfs || []
+        staffPdfs: o.staffPdfs || [],
+        designAttachments: o.designAttachments || [],
+        machineFiles: o.machineFiles || []
       };
     });
 
@@ -217,7 +221,9 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
   const omOrderItems = orders
     .filter(o => {
       // Either currently in DESIGN / HOLD phase, or previously processed by designer
-      return !isAssignedToOther(o.assignedDesigner || '');
+      const isCompleted = ![OrderStatus.DRAFT, OrderStatus.PENDING, OrderStatus.ACCOUNTS, OrderStatus.DESIGN, OrderStatus.HOLD].includes(o.status);
+      const isMyCompleted = isCompleted && o.assignedDesigner && o.assignedDesigner.toLowerCase().includes(designerName.toLowerCase());
+      return (o.status === OrderStatus.DESIGN || o.status === OrderStatus.HOLD || isMyCompleted) && !isAssignedToOther(o.assignedDesigner || '');
     })
     .map(o => {
       const chatKey = `pallywear_om_chats_designer_${o.id}`;
@@ -242,7 +248,9 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
         createdAt: o.createdAt,
         hasOmChat: hasOmChat,
         staffImages: o.staffImages || [],
-        staffPdfs: o.staffPdfs || []
+        staffPdfs: o.staffPdfs || [],
+        designAttachments: o.designAttachments || [],
+        machineFiles: o.machineFiles || []
       };
     });
 
@@ -652,11 +660,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                     item.assignedDesigner === '';
 
                   return (
-                    <tr
-                      key={item.id}
-                      onClick={() => handleOpenWorkspace(item)}
-                      className="hover:bg-gray-50/30 transition-colors cursor-pointer"
-                    >
+                    <tr key={item.id} className="hover:bg-gray-50/30 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
                           <span className="font-mono text-xs font-black text-brand-primary">
@@ -696,20 +700,48 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                             </span>
                           ) : (
                             <span className={cn(
-                               "px-2 py-1 rounded text-[9.5px] font-black uppercase tracking-widest border",
-                               isClaimedByMe ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-50 text-slate-600 border-slate-200"
+                              "px-2 py-1 rounded text-[9.5px] font-black uppercase tracking-widest border",
+                              isClaimedByMe ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-50 text-slate-600 border-slate-200"
                             )}>
                               {isClaimedByMe ? "🔒 Assigned to You" : `🔒 ${item.assignedDesigner}`}
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-6 py-4 text-right">
                         {item.isCompleted ? (
-                          <div className="flex items-center justify-end gap-2 text-xs">
-                            <span className="text-[10px] text-green-700 bg-green-50 font-black uppercase px-2.5 py-1.5 rounded-lg border border-green-200">
+                          <div className="flex items-center justify-end gap-3 text-xs">
+                            <span className="text-[10px] text-green-700 bg-green-50 font-black uppercase px-2 py-1 rounded-lg border border-green-200">
                               Completed ✔
                             </span>
+                            {/* Render thumbnail previews of completed designs */}
+                            {((item as any).designAttachments || []).length > 0 && (
+                              <div className="flex items-center gap-1">
+                                {((item as any).designAttachments || []).map((file: string, idx: number) => {
+                                  const isImage = file.startsWith('data:image/') || file.includes('image/');
+                                  return (
+                                    <div
+                                      key={idx}
+                                      onClick={(e) => { e.stopPropagation(); setViewingImage(file); }}
+                                      className="w-8 h-8 rounded-lg border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center cursor-pointer hover:border-purple-300 transition-all shadow-sm"
+                                      title={`View Completed Design Attachment ${idx + 1}`}
+                                    >
+                                      {isImage ? (
+                                        <img src={file} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <FileText size={14} className="text-purple-600" />
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            <button
+                              onClick={() => handleOpenWorkspace(item)}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black uppercase transition-all"
+                            >
+                              Review Assets
+                            </button>
                           </div>
                         ) : isUnclaimed ? (
                           <button
@@ -721,11 +753,11 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                           </button>
                         ) : isClaimedByMe ? (
                           <button
-                            disabled={isProcessing}
-                            onClick={() => handleCompleteOrderDirectly(item.id)}
-                            className="px-4 py-2 bg-green-650 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ml-auto cursor-pointer border-none shadow-sm"
+                            onClick={() => handleOpenWorkspace(item)}
+                            className="px-4 py-2 bg-black hover:bg-gray-800 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ml-auto cursor-pointer border-none shadow-sm"
                           >
-                            Click to Complete
+                            Open Workspace
+                            <ChevronRight size={14} />
                           </button>
                         ) : (
                           <span className="text-[10px] text-gray-400 font-bold uppercase italic pr-4">Claimed by partner</span>
@@ -899,7 +931,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                       Outputs Upload Bench (PDF / machine code)
                     </h4>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                       {/* Upload 1: Artwork Graphics */}
                       <div className="space-y-2 bg-white p-3.5 rounded-lg border border-purple-100">
                         <p className="text-[9.5px] font-black text-gray-500 uppercase tracking-tight">1. Vector Tracing Output (PDF)</p>
@@ -922,107 +954,9 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                           ))}
                         </div>
                       </div>
-
-                      {/* Upload 2: DST/Embroidery files */}
-                      <div className="space-y-2 bg-white p-3.5 rounded-lg border border-purple-100">
-                        <p className="text-[9.5px] font-black text-gray-500 uppercase tracking-tight">2. Machine Embroidery Files (DST)</p>
-                        <FileUpload
-                          label=""
-                          accept=".dst,.pes,.jef,.exp,.hus,.emb"
-                          onFilesSelected={(files) => setMachineFiles(prev => [...prev, ...files])}
-                        />
-                        <div className="max-h-[80px] overflow-y-auto space-y-1 mt-2">
-                          {machineFiles.map((file, i) => (
-                            <div key={i} className="flex justify-between items-center text-[10px] bg-slate-50 p-1.5 rounded border border-slate-200">
-                              <span className="truncate max-w-[120px] font-mono">Digi_{i + 1}.dst</span>
-                              <button
-                                onClick={() => handleRemoveFile(i, 'machine')}
-                                className="text-red-500 hover:text-red-700 bg-transparent border-none cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
                     </div>
                   </div>
 
-                  {/* Chat Panel Interface based on selected channel */}
-                  <div className="bg-gray-50 rounded-2xl border border-gray-150 p-4 shrink-0 flex flex-col gap-3 min-h-[290px] justify-between">
-                    <div>
-                      <div className="flex items-center justify-between border-b border-gray-200 pb-2 mb-2">
-                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
-                          <MessageSquare size={12} />
-                          {activeChannel === 'staff' ? 'Staff Desk Communication Log' : 'Backoffice Coordinator Chat'}
-                        </span>
-                        <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                      </div>
-
-                      {/* Actual Chat Logs Render */}
-                      {activeChannel === 'staff' ? (
-                        <div className="text-center py-6 text-xs text-gray-400 space-y-2">
-                          <p className="font-semibold text-gray-500">Sales/Staff Dialogues have a dedicated workspace panel</p>
-                          <button
-                            onClick={() => {
-                              window.dispatchEvent(new CustomEvent('open-conversations-feed', { detail: selectedOrder.id }));
-                            }}
-                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[10px] font-extrabold uppercase transition-all shadow-sm cursor-pointer border-none"
-                          >
-                            Launch Sales Dialogues
-                          </button>
-                        </div>
-                      ) : (
-                        // Order Management Live Channel
-                        <div className="space-y-3">
-                          <div className="max-h-[180px] overflow-y-auto space-y-2.5 pr-1 custom-scrollbar text-xs">
-                            {omMessages.length === 0 ? (
-                              <p className="italic text-gray-400 text-center py-4">No back-and-forth messages with Backoffice coordinates yet.</p>
-                            ) : (
-                              omMessages.map((msg, idx) => {
-                                const isDesigner = msg.senderRole === 'designer';
-                                return (
-                                  <div key={idx} className={cn(
-                                    "p-3 rounded-2xl max-w-[85%] space-y-1 block text-left",
-                                    isDesigner ? "bg-black text-white ml-auto" : "bg-gray-200 text-gray-900 mr-auto"
-                                  )}>
-                                    <p className="text-[9px] font-black opacity-60 uppercase">{msg.sender}</p>
-                                    <p className="font-medium text-xs leading-relaxed">{msg.text}</p>
-                                    {msg.attachments && msg.attachments.map((att, i) => (
-                                      <div key={i} className="flex items-center gap-1.5 mt-1 bg-white/10 p-1.5 rounded-lg">
-                                        <Paperclip size={10} />
-                                        <span className="text-[9px] truncate max-w-[130px]">Reference File</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-
-                          {/* Message Trigger Form */}
-                          <div className="flex gap-2 border-t border-gray-200 pt-3">
-                            <input
-                              type="text"
-                              placeholder="Send re-work details to Manager..."
-                              className="flex-1 text-xs bg-white border border-gray-200 rounded-xl px-3 outline-none text-gray-800 font-medium"
-                              value={omNewMessage}
-                              onChange={(e) => setOmNewMessage(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSendOmChatMessage();
-                              }}
-                            />
-                            <button
-                              onClick={handleSendOmChatMessage}
-                              className="h-9 w-9 bg-black text-white flex items-center justify-center rounded-xl hover:bg-gray-800 transition-all cursor-pointer border-none"
-                            >
-                              <Send size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -1059,15 +993,18 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                 Return to Sales/Staff
               </button>
 
-              {/* Primary Move forward command */}
-              <button
-                disabled={isProcessing || selectedOrder.status === OrderStatus.HOLD || (designFiles.length === 0 && machineFiles.length === 0)}
-                onClick={handleSendToOrderManagement}
-                className="flex-1 py-4 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-2xl font-black uppercase text-xs tracking-wider transition-all scale-100 hover:scale-[1.01] active:scale-95 shadow-lg border-none flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {isProcessing ? 'Processing files...' : 'Finish & Send to Order Management'}
-                <CheckCircle size={15} />
-              </button>
+              {selectedOrder.status === OrderStatus.DESIGN && (
+                <button
+                  disabled={isProcessing || selectedOrder.status === OrderStatus.HOLD}
+                  onClick={handleSendToOrderManagement}
+                  className="px-6 py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-black uppercase text-xs tracking-wider transition-all scale-100 hover:scale-[1.02] border-none flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ml-auto"
+                >
+                  <CheckCircle size={15} />
+                  Complete Design & Send
+                </button>
+              )}
+
+
             </div>
           </motion.div>
         </div>

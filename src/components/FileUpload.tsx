@@ -5,6 +5,7 @@
 
 import { useState, useRef, ChangeEvent } from 'react';
 import { Upload, X, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { saveFileToLocalDB } from '../lib/indexedDbHelper';
 import imageCompression from 'browser-image-compression';
 
 interface FileUploadProps {
@@ -57,11 +58,24 @@ export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accep
           reader.readAsDataURL(fileToProcess);
         });
 
+        let finalData = data;
+        // If file is larger than 100KB or is a zip file, store in IndexedDB
+        if (fileToProcess.size > 100 * 1024 || file.name.endsWith('.zip') || file.type.includes('zip')) {
+          const key = `file_${file.name.replace(/[^a-zA-Z0-9]/g, '_')}_${fileToProcess.size}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          try {
+            await saveFileToLocalDB(key, data);
+            const mimeType = data.split(';base64,')[0];
+            finalData = `${mimeType};base64,IDB_${key}`;
+          } catch (dbErr) {
+            console.error('Failed to save to local DB, fallback to original:', dbErr);
+          }
+        }
+
         processedFiles.push({
           name: file.name,
           type: file.type,
           size: fileToProcess.size,
-          data: data
+          data: finalData
         });
       } catch (error) {
         console.error('Error processing file:', error);

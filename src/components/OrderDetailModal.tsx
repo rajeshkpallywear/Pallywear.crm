@@ -1,7 +1,8 @@
 
 import { motion } from 'motion/react';
 import { X, User, Phone, MapPin, FileText, Globe, Clock, AlertCircle, CheckCircle, Download } from 'lucide-react';
-import { Order, OrderStatus } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { Order, OrderStatus, UserRole } from '../types';
 import ImageViewer from './ImageViewer';
 import WorkflowVisualizer from './WorkflowVisualizer';
 import React, { useState, useEffect } from 'react';
@@ -13,9 +14,13 @@ interface OrderDetailModalProps {
   onUpdateStatus?: (status: OrderStatus) => void;
   onUpdateOrder?: (id: string, updates: Partial<Order>) => Promise<void>;
   isAdmin?: boolean;
+  onReorder?: (order: Order) => void;
 }
 
-export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpdateOrder, isAdmin }: OrderDetailModalProps) {
+export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpdateOrder, isAdmin, onReorder }: OrderDetailModalProps) {
+  const { user } = useAuth();
+  const showAmountDetails = ['admin', 'accounts', 'order_management', 'delivery', UserRole.ADMIN, UserRole.ACCOUNTS, UserRole.ORDER_MANAGEMENT, UserRole.DELIVERY].includes(user?.role || '');
+
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedOrder, setEditedOrder] = useState<Order>(order);
@@ -26,6 +31,23 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
   useEffect(() => {
     setEditedOrder(order);
   }, [order]);
+
+  const handleDeleteAttachment = async (field: 'staffImages' | 'staffPdfs' | 'orderManagementAttachments' | 'designAttachments' | 'machineFiles' | 'accountsAttachments', index: number) => {
+    if (!window.confirm("Are you sure you want to delete this attachment? This will free up database space.")) return;
+    if (!onUpdateOrder) return;
+    try {
+      const currentList = [...(order[field] || [])];
+      currentList.splice(index, 1);
+      await onUpdateOrder(order.id, {
+        [field]: currentList,
+        updatedAt: Date.now()
+      });
+      alert("Attachment deleted successfully.");
+    } catch (error) {
+      console.error("Failed to delete attachment:", error);
+      alert("Failed to delete attachment.");
+    }
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0 || !onUpdateOrder) return;
@@ -104,6 +126,18 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
             <span className="text-xs font-mono text-gray-400 mt-1 uppercase tracking-widest">Access Protocol - ID: #{order.id}</span>
           </div>
           <div className="flex items-center gap-3">
+            {!isEditing && onReorder && user?.role === 'user' && (
+              <button
+                onClick={() => {
+                  onReorder(order);
+                  onClose();
+                }}
+                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                title="Create a new order based on this order's client details"
+              >
+                Create New Order
+              </button>
+            )}
             {!isEditing && (
               <button
                 onClick={() => downloadOrderPDF(order)}
@@ -356,6 +390,12 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                         />
                         <input
                           className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold text-sm"
+                          value={editedOrder.customerInfo.companyName || ''}
+                          onChange={e => setEditedOrder({ ...editedOrder, customerInfo: { ...editedOrder.customerInfo, companyName: e.target.value } })}
+                          placeholder="Company Name"
+                        />
+                        <input
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold text-sm"
                           value={editedOrder.customerInfo.phone}
                           onChange={e => setEditedOrder({ ...editedOrder, customerInfo: { ...editedOrder.customerInfo, phone: e.target.value } })}
                           placeholder="Phone"
@@ -374,6 +414,12 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                           <User size={18} className="text-brand-primary" />
                           {order.customerInfo.name}
                         </div>
+                        {order.customerInfo.companyName && (
+                          <div className="flex items-center gap-3 text-brand-primary font-black uppercase tracking-wider text-xs">
+                            <Globe size={18} className="text-brand-primary" />
+                            {order.customerInfo.companyName}
+                          </div>
+                        )}
                         <div className="flex items-center gap-3 text-gray-500 text-sm font-medium">
                           <Phone size={18} className="text-brand-primary/60" />
                           {order.customerInfo.phone}
@@ -387,56 +433,58 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                   </div>
                 </div>
 
-                <div className="bg-brand-primary/5 p-6 rounded-[32px] border border-brand-primary/10 shadow-sm flex flex-col justify-between">
-                  <p className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] mb-2">Billing Data</p>
-                  <div className="space-y-4">
-                    {isEditing ? (
-                      <div className="space-y-2">
-                        <div>
-                          <label className="text-[8px] font-black text-gray-400 uppercase">Grand Total</label>
-                          <input
-                            type="number"
-                            className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-black text-lg"
-                            value={editedOrder.financials.totalAmount}
-                            onChange={e => {
-                              const total = parseFloat(e.target.value) || 0;
-                              setEditedOrder({ ...editedOrder, financials: { ...editedOrder.financials, totalAmount: total, balanceAmount: total - editedOrder.financials.advancePay } });
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[8px] font-black text-gray-400 uppercase">Advance Paid</label>
-                          <input
-                            type="number"
-                            className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-bold text-sm text-green-600"
-                            value={editedOrder.financials.advancePay}
-                            onChange={e => {
-                              const adv = parseFloat(e.target.value) || 0;
-                              setEditedOrder({ ...editedOrder, financials: { ...editedOrder.financials, advancePay: adv, balanceAmount: editedOrder.financials.totalAmount - adv } });
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex justify-between items-end">
-                          <span className="text-[10px] font-bold text-gray-500 uppercase">Grand Total</span>
-                          <span className="text-2xl font-black text-gray-900">₹{(order.financials?.totalAmount || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className="font-bold text-green-600">Paid Amount</span>
-                            <span className="font-black text-gray-900">₹{(order.financials?.advancePay || 0).toLocaleString()}</span>
+                {showAmountDetails && (
+                  <div className="bg-brand-primary/5 p-6 rounded-[32px] border border-brand-primary/10 shadow-sm flex flex-col justify-between">
+                    <p className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] mb-2">Billing Data</p>
+                    <div className="space-y-4">
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-[8px] font-black text-gray-400 uppercase">Grand Total</label>
+                            <input
+                              type="number"
+                              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-black text-lg"
+                              value={editedOrder.financials.totalAmount}
+                              onChange={e => {
+                                const total = parseFloat(e.target.value) || 0;
+                                setEditedOrder({ ...editedOrder, financials: { ...editedOrder.financials, totalAmount: total, balanceAmount: total - editedOrder.financials.advancePay } });
+                              }}
+                            />
                           </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="font-bold text-red-600">Pending Pay</span>
-                            <span className="font-black text-gray-900">₹{(order.financials?.balanceAmount || 0).toLocaleString()}</span>
+                          <div>
+                            <label className="text-[8px] font-black text-gray-400 uppercase">Advance Paid</label>
+                            <input
+                              type="number"
+                              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-bold text-sm text-green-600"
+                              value={editedOrder.financials.advancePay}
+                              onChange={e => {
+                                const adv = parseFloat(e.target.value) || 0;
+                                setEditedOrder({ ...editedOrder, financials: { ...editedOrder.financials, advancePay: adv, balanceAmount: editedOrder.financials.totalAmount - adv } });
+                              }}
+                            />
                           </div>
                         </div>
-                      </>
-                    )}
+                      ) : (
+                        <>
+                          <div className="flex justify-between items-end">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Grand Total</span>
+                            <span className="text-2xl font-black text-gray-900">₹{(order.financials?.totalAmount || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="font-bold text-green-600">Paid Amount</span>
+                              <span className="font-black text-gray-900">₹{(order.financials?.advancePay || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="font-bold text-red-600">Pending Pay</span>
+                              <span className="font-black text-gray-900">₹{(order.financials?.balanceAmount || 0).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="bg-white border border-gray-100 rounded-[32px] shadow-sm p-6 overflow-hidden">
@@ -462,9 +510,11 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                       <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-end">
                         <div className="flex items-center gap-4">
                           <span className="text-[10px] font-black text-gray-900">Qty: {item.quantity}</span>
-                          <span className="text-[10px] font-black text-brand-primary">Rate: ₹{item.price}</span>
+                          {showAmountDetails && <span className="text-[10px] font-black text-brand-primary">Rate: ₹{item.price}</span>}
                         </div>
-                        <span className="text-xs font-black text-gray-900">Total: ₹{(item.quantity * (item.price || 0)).toLocaleString()}</span>
+                        {showAmountDetails && (
+                          <span className="text-xs font-black text-gray-900">Total: ₹{(item.quantity * (item.price || 0)).toLocaleString()}</span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -499,12 +549,21 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                     <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Pictures</p>
                     <div className="flex flex-wrap gap-2">
                       {order.staffImages?.map((img, i) => (
-                        <div
-                          key={i}
-                          onClick={() => setViewingImage(img)}
-                          className="w-16 h-16 rounded-xl border border-white shadow-sm overflow-hidden cursor-pointer hover:scale-105 transition-all"
-                        >
-                          <img src={img} className="w-full h-full object-cover" />
+                        <div key={i} className="relative group w-16 h-16">
+                          <div
+                            onClick={() => setViewingImage(img)}
+                            className="w-full h-full rounded-xl border border-white shadow-sm overflow-hidden cursor-pointer hover:scale-105 transition-all"
+                          >
+                            <img src={img} className="w-full h-full object-cover" />
+                          </div>
+                          {onUpdateOrder && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteAttachment('staffImages', i); }}
+                              className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10 cursor-pointer"
+                            >
+                              <X size={10} />
+                            </button>
+                          )}
                         </div>
                       ))}
                       {!order.staffImages?.length && <span className="text-[10px] text-gray-300 italic">None</span>}
@@ -514,13 +573,22 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                     <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Documents</p>
                     <div className="flex flex-wrap gap-2">
                       {order.staffPdfs?.map((pdf, i) => (
-                        <div
-                          key={i}
-                          onClick={() => setViewingImage(pdf)}
-                          className="w-16 h-16 rounded-xl bg-white border border-gray-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-gray-400 hover:text-brand-primary"
-                          title="Staff PDF"
-                        >
-                          <FileText size={24} />
+                        <div key={i} className="relative group w-16 h-16">
+                          <div
+                            onClick={() => setViewingImage(pdf)}
+                            className="w-full h-full rounded-xl bg-white border border-gray-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-gray-400 hover:text-brand-primary"
+                            title="Staff PDF"
+                          >
+                            <FileText size={24} />
+                          </div>
+                          {onUpdateOrder && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteAttachment('staffPdfs', i); }}
+                              className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10 cursor-pointer"
+                            >
+                              <X size={10} />
+                            </button>
+                          )}
                         </div>
                       ))}
                       {!order.staffPdfs?.length && <span className="text-[10px] text-gray-300 italic">None</span>}
@@ -531,12 +599,21 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                       <p className="text-[10px] font-bold text-blue-500 uppercase mb-2">Management Files</p>
                       <div className="flex flex-wrap gap-2">
                         {order.orderManagementAttachments.map((file, i) => (
-                          <div
-                            key={i}
-                            onClick={() => setViewingImage(file)}
-                            className="w-16 h-16 rounded-xl bg-blue-50 border border-blue-100 flex flex-col items-center justify-center cursor-pointer hover:shadow-md transition-all text-blue-500 group"
-                          >
-                            {file.includes('zip') ? <Download size={24} /> : <FileText size={24} />}
+                          <div key={i} className="relative group w-16 h-16">
+                            <div
+                              onClick={() => setViewingImage(file)}
+                              className="w-full h-full rounded-xl bg-blue-50 border border-blue-100 flex flex-col items-center justify-center cursor-pointer hover:shadow-md transition-all text-blue-500"
+                            >
+                              {file.includes('zip') ? <Download size={24} /> : <FileText size={24} />}
+                            </div>
+                            {onUpdateOrder && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteAttachment('orderManagementAttachments', i); }}
+                                className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10 cursor-pointer"
+                              >
+                                <X size={10} />
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -547,12 +624,21 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                       <p className="text-[10px] font-bold text-purple-500 uppercase mb-2">Art Studio Files</p>
                       <div className="flex flex-wrap gap-2">
                         {order.designAttachments.map((file, i) => (
-                          <div
-                            key={i}
-                            onClick={() => setViewingImage(file)}
-                            className="w-16 h-16 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-purple-500"
-                          >
-                            {file.startsWith('data:image/') ? <img src={file} className="w-full h-full object-cover rounded-xl" /> : <FileText size={24} />}
+                          <div key={i} className="relative group w-16 h-16">
+                            <div
+                              onClick={() => setViewingImage(file)}
+                              className="w-full h-full rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-purple-500"
+                            >
+                              {file.startsWith('data:image/') ? <img src={file} className="w-full h-full object-cover rounded-xl" /> : <FileText size={24} />}
+                            </div>
+                            {onUpdateOrder && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteAttachment('designAttachments', i); }}
+                                className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10 cursor-pointer"
+                              >
+                                <X size={10} />
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -563,12 +649,21 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                       <p className="text-[10px] font-bold text-indigo-500 uppercase mb-2">Machine Language (ZIP)</p>
                       <div className="flex flex-wrap gap-2">
                         {order.machineFiles.map((file, i) => (
-                          <div
-                            key={i}
-                            onClick={() => setViewingImage(file)}
-                            className="w-16 h-16 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-indigo-500"
-                          >
-                            <Download size={24} />
+                          <div key={i} className="relative group w-16 h-16">
+                            <div
+                              onClick={() => setViewingImage(file)}
+                              className="w-full h-full rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-indigo-500"
+                            >
+                              <Download size={24} />
+                            </div>
+                            {onUpdateOrder && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteAttachment('machineFiles', i); }}
+                                className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10 cursor-pointer"
+                              >
+                                <X size={10} />
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -579,12 +674,21 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                       <p className="text-[10px] font-bold text-amber-500 uppercase mb-2">Billing Docs</p>
                       <div className="flex flex-wrap gap-2">
                         {order.accountsAttachments.map((file, i) => (
-                          <div
-                            key={i}
-                            onClick={() => setViewingImage(file)}
-                            className="w-16 h-16 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-amber-500"
-                          >
-                            {file.startsWith('data:image/') ? <img src={file} className="w-full h-full object-cover rounded-xl" /> : <FileText size={24} />}
+                          <div key={i} className="relative group w-16 h-16">
+                            <div
+                              onClick={() => setViewingImage(file)}
+                              className="w-full h-full rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-amber-500"
+                            >
+                              {file.startsWith('data:image/') ? <img src={file} className="w-full h-full object-cover rounded-xl" /> : <FileText size={24} />}
+                            </div>
+                            {onUpdateOrder && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteAttachment('accountsAttachments', i); }}
+                                className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10 cursor-pointer"
+                              >
+                                <X size={10} />
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>

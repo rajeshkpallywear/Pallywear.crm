@@ -4,8 +4,13 @@
  */
 
 import { useState } from 'react';
-import { motion } from 'motion/react';
-import { Factory, Download, ChevronRight, FileText, CheckCircle, Package, ZoomIn, Share2, Globe, Trash2, TrendingUp } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '../context/AuthContext';
+import {
+  Factory, Download, FileText, CheckCircle, Package,
+  ZoomIn, Trash2, Search, PauseCircle, RefreshCw,
+  Eye, ArrowRight, Play
+} from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { getDisplayCategory, cn } from '../lib/utils';
 import OrderDetailModal from './OrderDetailModal';
@@ -16,246 +21,452 @@ interface ProductionDashboardProps {
   onUpdateOrder: (id: string, updates: Partial<Order>) => Promise<void>;
   onDeleteOrder?: (id: string) => void;
   isAdmin?: boolean;
+  onReorder?: (order: Order) => void;
 }
 
-export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrder, isAdmin }: ProductionDashboardProps) {
+type TabSection = 'total' | 'hold' | 'completed';
+
+const STATUS_BADGE: Record<string, string> = {
+  Production: 'bg-amber-50 text-amber-800',
+  'On Hold': 'bg-red-50 text-red-800',
+  Delivered: 'bg-green-50 text-green-800',
+  Delivery: 'bg-orange-50 text-orange-800',
+};
+
+function getStatusLabel(order: Order): string {
+  switch (order.status) {
+    case OrderStatus.PRODUCTION: return 'Production';
+    case OrderStatus.HOLD: return 'On Hold';
+    case OrderStatus.DELIVERED: return 'Delivered';
+    case OrderStatus.DELIVERY: return 'Delivery';
+    default: return order.status;
+  }
+}
+
+export default function ProductionDashboard({
+  orders,
+  onUpdateOrder,
+  onDeleteOrder,
+  isAdmin,
+  onReorder,
+}: ProductionDashboardProps) {
+  const { user } = useAuth();
+  const showAmountDetails = ['admin', 'accounts', 'order_management', 'delivery'].includes(user?.role || '');
+  const hourOfDay = new Date().getHours();
+  const greeting =
+    hourOfDay < 12 ? 'Good morning' : hourOfDay < 17 ? 'Good afternoon' : 'Good evening';
+
+  const [selectedSection, setSelectedSection] = useState<TabSection>('total');
+  const [orderSearch, setOrderSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [selectedSection, setSelectedSection] = useState<'total' | 'hold' | 'completed'>('total');
   const [selectedHubOrder, setSelectedHubOrder] = useState<Order | null>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const pendingOrders = orders.filter(o => o.status === OrderStatus.PRODUCTION || (o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.PRODUCTION));
+  // ── counts ────────────────────────────────────────────────────────────────
+  const totalCount = orders.filter(o => o.status === OrderStatus.PRODUCTION).length;
+  const holdCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.PRODUCTION).length;
+  const completedCount = orders.filter(o => o.status === OrderStatus.DELIVERED).length;
 
-  const filteredOrders = orders.filter(o => {
-    if (selectedSection === 'hold') {
-      return o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.PRODUCTION;
-    }
-    if (selectedSection === 'completed') {
-      return o.status === OrderStatus.DELIVERED;
-    }
+  // ── filtered list ─────────────────────────────────────────────────────────
+  const sectionOrders = orders.filter(o => {
+    if (selectedSection === 'hold') return o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.PRODUCTION;
+    if (selectedSection === 'completed') return o.status === OrderStatus.DELIVERED;
     return o.status === OrderStatus.PRODUCTION;
   });
 
-  const totalOrdersCount = orders.filter(o => o.status === OrderStatus.PRODUCTION).length;
-  const holdOrdersCount = orders.filter(o => o.status === OrderStatus.HOLD && o.previousStatus === OrderStatus.PRODUCTION).length;
-  const completedOrdersCount = orders.filter(o => o.status === OrderStatus.DELIVERED).length;
+  const q = orderSearch.toLowerCase().trim();
+  const filteredOrders = q
+    ? sectionOrders.filter(o =>
+      o.id?.toLowerCase().includes(q) ||
+      o.customerInfo?.name?.toLowerCase().includes(q) ||
+      o.customerInfo?.companyName?.toLowerCase().includes(q)
+    )
+    : sectionOrders;
 
+  // ── helpers ───────────────────────────────────────────────────────────────
   const handleFinishProduction = async () => {
     if (!selectedOrder || isProcessing) return;
     setIsProcessing(true);
-
     try {
-      await onUpdateOrder(selectedOrder.id, {
+      const updates = {
         status: OrderStatus.DELIVERY,
-        updatedAt: Date.now()
-      });
-
-      setSelectedOrder(null);
+        updatedAt: Date.now(),
+      };
+      await onUpdateOrder(selectedOrder.id, updates);
+      setSelectedOrder(null); // Close panel since it moved out of production tracking
     } catch (e) {
       console.error(e);
+      alert('Action failed.');
     } finally {
       setIsProcessing(false);
     }
   };
 
   const downloadAllAttachments = (order: Order) => {
-    const allAttachments = [
+    const all = [
       ...(order.staffImages || []),
       ...(order.staffPdfs || []),
       ...(order.accountsAttachments || []),
       ...(order.designAttachments || []),
       ...(order.machineFiles || []),
-      ...(order.orderManagementAttachments || [])
+      ...(order.orderManagementAttachments || []),
     ].filter(Boolean);
 
-    if (allAttachments.length === 0) {
-      alert('No attachments found for this order.');
-      return;
-    }
-
-    const confirmMsg = `This will attempt to open ${allAttachments.length} files in separate tabs. Please allow popups if prompted. Continue?`;
-    if (allAttachments.length > 1 && !confirm(confirmMsg)) {
-      return;
-    }
-
-    allAttachments.forEach((url, i) => {
-      setTimeout(() => {
-        window.open(url, '_blank');
-      }, i * 300); // Stagger to avoid browser popup blockers
-    });
+    if (all.length === 0) { alert('No attachments found for this order.'); return; }
+    if (all.length > 1 && !confirm(`This will open ${all.length} files in separate tabs. Continue?`)) return;
+    all.forEach((url, i) => setTimeout(() => window.open(url, '_blank'), i * 300));
   };
 
+  // ── tab config ─────────────────────────────────────────────────────────────
+  const tabs: { key: TabSection; label: string; count: number; Icon: any; notify?: boolean }[] = [
+    { key: 'total', label: 'In production', count: totalCount, Icon: Factory },
+    { key: 'hold', label: 'On hold', count: holdCount, Icon: PauseCircle, notify: holdCount > 0 },
+    { key: 'completed', label: 'Completed', count: completedCount, Icon: CheckCircle },
+  ];
+
+  const sectionTitles: Record<TabSection, string> = {
+    total: 'In production',
+    hold: 'On hold orders',
+    completed: 'Completed orders',
+  };
+
+  // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-          Sync Data
-        </button>
+      {/* ── greeting banner ── */}
+      <div className="rounded-3xl bg-gradient-to-br from-[#3C3489] to-[#534AB7] px-8 py-7">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-white/50 mb-1">Pallywear CRM</p>
+        <h2 className="text-2xl font-bold text-white mb-1">{greeting}, {user?.name || 'there'}!</h2>
+        <p className="text-sm text-white/60">Here's your production snapshot for today.</p>
       </div>
 
-      {/* Premium Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[
-          { key: 'total', label: 'Total Orders', sub: 'All production entries', count: totalOrdersCount, icon: Package, gradient: 'from-violet-500 to-purple-600', light: 'bg-violet-50 text-violet-600' },
-          { key: 'hold', label: 'Hold Orders', sub: 'On-hold runs', count: holdOrdersCount, icon: Factory, gradient: 'from-amber-500 to-orange-500', light: 'bg-amber-50 text-amber-600' },
-          { key: 'completed', label: 'Completed', sub: 'Dispatched and closed', count: completedOrdersCount, icon: TrendingUp, gradient: 'from-emerald-500 to-teal-500', light: 'bg-emerald-50 text-emerald-600' },
-        ].map(card => {
-          const Icon = card.icon;
-          const isActive = selectedSection === card.key;
-          return (
-            <button key={card.key} onClick={() => setSelectedSection(card.key as any)}
-              className={cn("relative p-5 rounded-2xl border text-left flex items-start gap-4 cursor-pointer overflow-hidden transition-all",
-                isActive ? `bg-gradient-to-br ${card.gradient} border-transparent shadow-lg scale-[1.02]` : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-md"
-              )}>
-              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", isActive ? "bg-white/20" : card.light.split(' ')[0])}>
-                <Icon size={20} className={isActive ? "text-white" : card.light.split(' ').slice(1).join(' ')} />
-              </div>
-              <div>
-                <p className={cn("text-[10px] font-black uppercase tracking-widest", isActive ? "text-white/70" : "text-slate-400")}>{card.label}</p>
-                <p className={cn("text-3xl font-black tracking-tight mt-0.5", isActive ? "text-white" : "text-slate-900")}>{card.count}</p>
-                <span className={cn("text-[10px] font-medium mt-0.5 block", isActive ? "text-white/60" : "text-slate-400")}>{card.sub}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-3">
-          <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 px-1">
-            <Factory className="text-purple-500" size={14} />
-            {selectedSection === 'total' ? 'All Production Lines' : selectedSection === 'hold' ? 'On Hold Lines' : 'Completed Runs'} ({filteredOrders.length})
-          </h3>
-          <div className="space-y-2.5 max-h-[65vh] overflow-y-auto pr-1">
-            {filteredOrders.length > 0 ? (
-              filteredOrders.map(order => (
-                <button
-                  key={order.id}
-                  onClick={() => setSelectedOrder(order)}
-                  className={cn("w-full text-left p-4 rounded-2xl border transition-all",
-                    selectedOrder?.id === order.id
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-lg scale-[1.01]'
-                      : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-mono opacity-60">#{order.id.slice(-6)}</span>
-                      {order.status === OrderStatus.HOLD && (
-                        <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 rounded w-fit">ON HOLD</span>
-                      )}
-                      {order.isUrgent && (
-                        <span className="bg-red-500 text-white text-[9px] font-black px-1.5 rounded animate-pulse w-fit">URGENT</span>
-                      )}
-                    </div>
-                    <span className={cn("text-[8px] font-black uppercase px-2 py-0.5 rounded-full border",
-                      selectedOrder?.id === order.id ? "bg-white/10 border-white/20 text-white/80" : "bg-violet-50 text-violet-600 border-violet-200"
-                    )}>
-                      {getDisplayCategory(order)}
-                    </span>
-                  </div>
-                  <div className="font-bold text-sm mb-1">{order.customerInfo.name}</div>
-                  {order.status === OrderStatus.HOLD && order.holdReason && (
-                    <div className="text-[10px] text-red-400 font-bold mt-1 italic">Reason: {order.holdReason}</div>
-                  )}
-                </button>
-              ))
-            ) : (
-              <div className="p-10 bg-white border border-dashed border-slate-200 rounded-2xl text-center">
-                <CheckCircle className="mx-auto text-slate-300 mb-2" size={28} />
-                <p className="text-xs text-slate-400 font-medium">All current orders are finished!</p>
-              </div>
+      {/* ── tab cards ── */}
+      <div className="flex items-center gap-4 py-2">
+        {tabs.map(({ key, count, Icon }) => (
+          <button
+            key={key}
+            onClick={() => { setSelectedSection(key); setOrderSearch(''); setSelectedOrder(null); }}
+            className={cn(
+              "w-16 h-16 rounded-[22px] flex items-center justify-center transition-all relative shadow-sm",
+              selectedSection === key
+                ? "bg-gradient-to-tr from-[#3C3489] to-[#534AB7] text-white ring-4 ring-indigo-100"
+                : "bg-white text-gray-500 hover:text-gray-800"
             )}
+          >
+            <Icon size={24} className={selectedSection === key ? 'text-white' : 'text-gray-400'} />
+            {count > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white font-bold text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+                {count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── orders table card ── */}
+      <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden">
+        {/* header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">{sectionTitles[selectedSection]}</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} found</p>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search orders…"
+              value={orderSearch}
+              onChange={e => setOrderSearch(e.target.value)}
+              className="pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 outline-none focus:border-[#3C3489] focus:bg-white transition-all placeholder:text-gray-400 w-44"
+            />
           </div>
         </div>
 
-        <div className="lg:col-span-2">
-          {selectedOrder ? (
+        {/* table */}
+        {filteredOrders.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  {['Order', 'Customer', 'Category', 'Qty', 'Status', 'Date', 'Amount', 'Actions'].filter(h => h !== 'Amount' || showAmountDetails).map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-100">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map(order => {
+                  const statusLabel = getStatusLabel(order);
+                  const badgeClass = STATUS_BADGE[statusLabel] || 'bg-gray-50 text-gray-700';
+                  return (
+                    <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors">
+                      <td className="px-5 py-4">
+                        <span className="font-mono text-xs text-gray-400">#{order.id ? order.id.slice(-6) : '------'}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1.5">
+                          {order.isUrgent && (
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                          )}
+                          <div>
+                            <p className="text-sm font-bold text-gray-900 truncate max-w-[130px]">{order.customerInfo?.name}</p>
+                            {order.customerInfo?.companyName && (
+                              <p className="text-[11px] text-gray-400 truncate max-w-[130px]">{order.customerInfo.companyName}</p>
+                            )}
+                            {order.status === OrderStatus.HOLD && order.holdReason && (
+                              <p className="text-[10px] text-red-500 italic mt-0.5 truncate max-w-[130px]">{order.holdReason}</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-xs text-gray-600">{getDisplayCategory(order)}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-sm font-bold text-gray-900">{order.quantity || 1}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold', badgeClass)}>
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-xs text-gray-400">{order.updatedAt ? new Date(order.updatedAt).toLocaleDateString() : '--/--/----'}</span>
+                      </td>
+                      {showAmountDetails && (
+                        <td className="px-5 py-4">
+                          <span className="text-sm font-bold text-gray-900">
+                            ₹{(order.financials?.totalAmount || 0).toLocaleString()}
+                          </span>
+                        </td>
+                      )}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1.5">
+                          {/* View detail */}
+                          <button
+                            onClick={() => setSelectedOrder(order)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg text-[11px] font-bold text-gray-600 transition-colors"
+                          >
+                            <Eye size={12} /> View
+                          </button>
+                          {/* Finish production (total tab only) */}
+                          {selectedSection === 'total' && order.status !== OrderStatus.HOLD && (
+                            <button
+                              disabled={isProcessing}
+                              onClick={async () => {
+                                if (window.confirm('Mark this order as finished and move to Delivery?')) {
+                                  setIsProcessing(true);
+                                  try {
+                                    const updates = { status: OrderStatus.DELIVERY, updatedAt: Date.now() };
+                                    await onUpdateOrder(order.id, updates);
+                                    if (selectedOrder?.id === order.id) {
+                                      setSelectedOrder(null);
+                                    }
+                                  } catch (e) { alert('Action failed.'); }
+                                  finally { setIsProcessing(false); }
+                                }
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 bg-[#3C3489] hover:bg-[#2F286E] text-white rounded-lg text-[11px] font-bold transition-colors disabled:opacity-50"
+                            >
+                              <ArrowRight size={12} />
+                            </button>
+                          )}
+                          {/* Release hold */}
+                          {selectedSection === 'hold' && (
+                            <button
+                              disabled={isProcessing}
+                              onClick={async () => {
+                                const newStatus = order.previousStatus || OrderStatus.PRODUCTION;
+                                if (window.confirm(`Release order back to ${newStatus}?`)) {
+                                  setIsProcessing(true);
+                                  try {
+                                    const updates = { status: newStatus, previousStatus: undefined, updatedAt: Date.now() };
+                                    await onUpdateOrder(order.id, updates);
+                                    if (selectedOrder?.id === order.id) {
+                                      setSelectedOrder(prev => prev ? { ...prev, ...updates } : null);
+                                    }
+                                  } catch (e) { alert('Action failed.'); }
+                                  finally { setIsProcessing(false); }
+                                }
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 rounded-lg text-[11px] font-bold transition-colors disabled:opacity-50"
+                            >
+                              <Play size={12} />
+                            </button>
+                          )}
+                          {/* Download all assets */}
+                          <button
+                            onClick={() => downloadAllAttachments(order)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 rounded-lg text-[11px] font-bold transition-colors"
+                            title="Download all assets"
+                          >
+                            <Download size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Factory className="text-gray-200 mb-3" size={40} />
+            <p className="text-sm font-bold text-gray-500">
+              {orderSearch ? 'No orders match your search' : 'No orders in this category'}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">Orders will appear here once they move to this stage.</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Order detail slide-over ── */}
+      <AnimatePresence>
+        {selectedOrder && (
+          <div className="fixed inset-0 z-50 flex justify-end">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setSelectedOrder(null)}
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="relative w-full max-w-2xl bg-white h-full overflow-y-auto shadow-2xl flex flex-col z-10"
             >
-              <div className="p-6 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex items-center justify-between">
+              {/* header */}
+              <div className="sticky top-0 z-10 bg-[#3C3489] text-white px-6 py-4 flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Production Order</span>
-                  <h4 className="text-2xl font-black italic tracking-tighter mt-0.5">#{selectedOrder.id.slice(-8)}</h4>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Production order</p>
+                  <h4 className="text-lg font-bold text-white mt-0.5">
+                    #{selectedOrder.id ? selectedOrder.id.slice(-8) : '--------'}
+                    {selectedOrder.isUrgent && (
+                      <span className="ml-2 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg animate-pulse">URGENT</span>
+                    )}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">{selectedOrder.customerInfo?.name}</p>
                 </div>
-                <button
-                  onClick={() => downloadAllAttachments(selectedOrder)}
-                  className="bg-white text-slate-900 px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-slate-100 transition-colors shadow-sm"
-                >
-                  <Download size={14} />
-                  Download All Assets
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => downloadAllAttachments(selectedOrder)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white text-slate-900 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors"
+                  >
+                    <Download size={13} /> Download all
+                  </button>
+                  <button
+                    onClick={() => setSelectedOrder(null)}
+                    className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white/60"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
-              <div className="p-6">
-                <div className="mb-5 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+              <div className="flex-1 p-6 space-y-5">
+                {/* order breakdown */}
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-2xl">
                   <div className="flex items-center justify-between mb-3">
-                    <h6 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Order Details & Breakdown</h6>
-                    <div className="flex items-center gap-3">
-                      <span className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-bold uppercase">{getDisplayCategory(selectedOrder)}</span>
-                      <span className="text-xs font-bold text-slate-700">Total: {selectedOrder.quantity} pcs</span>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Order breakdown</p>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1 bg-[#3C3489] text-white rounded-lg text-[10px] font-bold uppercase">{getDisplayCategory(selectedOrder)}</span>
+                      <span className="text-xs font-bold text-gray-600">Total: {selectedOrder.quantity} pcs</span>
                     </div>
                   </div>
-                  <div className="space-y-3 max-h-[200px] overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                     {selectedOrder.sizeBreakdown?.map((item, idx) => (
-                      <div key={idx} className="p-3 bg-white border border-slate-100 shadow-sm rounded-xl flex flex-col gap-2">
-                        <div className="flex justify-between items-start">
-                          <span className="text-[10px] font-black text-violet-600 uppercase tracking-tighter">{item.category}</span>
-                          <span className="text-[10px] font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded">{item.size}</span>
+                      <div key={idx} className="p-3 bg-white border border-gray-100 rounded-xl text-[11px]">
+                        <div className="flex justify-between mb-1.5">
+                          <span className="font-black text-violet-600 uppercase">{item.category}</span>
+                          <span className="font-black text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{item.size}</span>
                         </div>
-                        <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500 font-bold">
-                          {item.colour && <div><span className="text-[8px] text-slate-400 block">Colour</span>{item.colour}</div>}
-                          {item.printType && <div><span className="text-[8px] text-slate-400 block">Print</span>{item.printType}</div>}
-                          {item.material && <div><span className="text-[8px] text-slate-400 block">Material</span>{item.material}</div>}
+                        <div className="grid grid-cols-3 gap-2 text-gray-500 font-bold">
+                          {item.colour && <div><span className="text-[9px] text-gray-400 block">Colour</span>{item.colour}</div>}
+                          {item.printType && <div><span className="text-[9px] text-gray-400 block">Print</span>{item.printType}</div>}
+                          {item.material && <div><span className="text-[9px] text-gray-400 block">Material</span>{item.material}</div>}
                         </div>
-                        <div className="pt-1.5 border-t border-slate-50 flex justify-between items-center">
-                          <span className="text-[10px] font-black text-slate-800">Qty: {item.quantity} units</span>
+                        <div className="flex justify-between mt-2 pt-2 border-t border-gray-100 font-black">
+                          <span>Qty: {item.quantity} units</span>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+                {/* assets grid */}
+                <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: 'Staff Pics', files: selectedOrder.staffImages || [], color: 'slate', icon: 'img' },
-                    { label: 'Staff PDFs', files: selectedOrder.staffPdfs || [], color: 'slate', icon: 'doc' },
-                    { label: 'Billing Docs', files: selectedOrder.accountsAttachments || [], color: 'slate', icon: 'bill' },
-                    { label: 'Design Files', files: [...(selectedOrder.designAttachments || []), ...(selectedOrder.machineFiles || [])], color: 'violet', icon: 'art' },
+                    { label: 'Staff images', files: selectedOrder.staffImages || [], color: 'gray' },
+                    { label: 'Staff PDFs', files: selectedOrder.staffPdfs || [], color: 'gray' },
+                    { label: 'Billing docs', files: selectedOrder.accountsAttachments || [], color: 'gray' },
+                    { label: 'Design files', files: [...(selectedOrder.designAttachments || []), ...(selectedOrder.machineFiles || [])], color: 'violet' },
                   ].map(section => (
-                    <div key={section.label} className="space-y-2">
-                      <h6 className={cn("text-[9px] font-black uppercase tracking-widest", section.color === 'violet' ? "text-violet-500" : "text-slate-400")}>{section.label}</h6>
-                      <div className="space-y-1">
-                        {section.files.map((f, i) => (
-                          <div key={i} onClick={() => setViewingImage(f)}
-                            className={cn("text-[10px] p-2 rounded-lg border truncate cursor-pointer flex items-center gap-1.5 transition-colors",
-                              section.color === 'violet' ? "bg-violet-50 border-violet-100 text-violet-700 hover:bg-violet-100" : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100"
-                            )}>
-                            <ZoomIn size={10} />
-                            <span className="truncate">File_{i + 1}</span>
-                          </div>
-                        ))}
-                        {section.files.length === 0 && (
-                          <div className="text-[9px] text-slate-300 italic p-2">None</div>
-                        )}
-                      </div>
+                    <div key={section.label} className="p-3 bg-white border border-gray-100 rounded-xl space-y-1.5">
+                      <p className={cn('text-[10px] font-black uppercase tracking-widest', section.color === 'violet' ? 'text-violet-500' : 'text-gray-400')}>
+                        {section.label} ({section.files.length})
+                      </p>
+                      {section.files.length > 0 ? section.files.map((f, i) => (
+                        <div
+                          key={i}
+                          onClick={() => setViewingImage(f)}
+                          className={cn(
+                            'flex items-center gap-1.5 p-2 rounded-lg border text-[11px] font-bold cursor-pointer transition-colors truncate',
+                            section.color === 'violet'
+                              ? 'bg-violet-50 border-violet-100 text-violet-700 hover:bg-violet-100'
+                              : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'
+                          )}
+                        >
+                          <ZoomIn size={11} />
+                          <span className="truncate">File_{i + 1}</span>
+                        </div>
+                      )) : (
+                        <p className="text-[10px] text-gray-300 italic px-2">None attached</p>
+                      )}
                     </div>
                   ))}
                 </div>
 
-                {viewingImage && (
-                  <ImageViewer src={viewingImage} onClose={() => setViewingImage(null)} fileName={`Order_${selectedOrder.id}`} />
+                {/* order management attachments */}
+                {(selectedOrder.orderManagementAttachments || []).length > 0 && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+                    <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1.5">Garage ZIP files ({selectedOrder.orderManagementAttachments!.length})</p>
+                    {selectedOrder.orderManagementAttachments!.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between p-2 bg-white/70 rounded-lg text-[11px]">
+                        <span className="text-indigo-700 font-bold">Garage_{i + 1}.zip</span>
+                        <a href={f} download={`Garage_{i + 1}.zip`} className="text-indigo-700 font-black hover:underline flex items-center gap-1">
+                          <Download size={11} /> Download
+                        </a>
+                      </div>
+                    ))}
+                  </div>
                 )}
 
-                <div className="flex gap-3">
+                {/* notes */}
+                {selectedOrder.notes && (
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Communication logs</p>
+                    <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{selectedOrder.notes}</p>
+                  </div>
+                )}
+
+                {/* action buttons */}
+                <div className="flex gap-2 pt-2">
+                  {onReorder && user?.role === 'user' && (
+                    <button
+                      onClick={() => onReorder(selectedOrder)}
+                      className="px-4 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition-colors"
+                    >
+                      Re-order
+                    </button>
+                  )}
+
                   {selectedOrder.status === OrderStatus.HOLD ? (
                     <button
                       disabled={isProcessing}
@@ -264,33 +475,43 @@ export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrd
                         if (window.confirm(`Release order back to ${newStatus}?`)) {
                           setIsProcessing(true);
                           try {
-                            await onUpdateOrder(selectedOrder.id, { status: newStatus, previousStatus: undefined, updatedAt: Date.now() });
-                            setSelectedOrder(prev => prev ? { ...prev, status: newStatus, previousStatus: undefined } : null);
-                            alert("Order released.");
-                          } catch (e) { alert("Action failed."); } finally { setIsProcessing(false); }
+                            const updates = { status: newStatus, previousStatus: undefined, updatedAt: Date.now() };
+                            await onUpdateOrder(selectedOrder.id, updates);
+                            setSelectedOrder(prev => prev ? { ...prev, ...updates } : null);
+                            alert('Order released.');
+                          } catch (e) { alert('Action failed.'); }
+                          finally { setIsProcessing(false); }
                         }
                       }}
-                      className="px-5 py-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold hover:bg-emerald-100 transition-all disabled:opacity-50 text-xs"
+                      className="px-5 py-3.5 bg-green-50 text-green-700 border border-green-200 rounded-2xl text-xs font-bold hover:bg-green-100 transition-colors disabled:opacity-50"
                     >
-                      Release Hold
+                      Release hold
                     </button>
                   ) : (
                     <button
                       disabled={isProcessing}
                       onClick={async () => {
-                        const reason = window.prompt("Enter Hold Reason:");
+                        const reason = window.prompt('Enter hold reason:');
                         if (reason === null) return;
-                        if (!reason.trim()) { alert("Reason is required."); return; }
+                        if (!reason.trim()) { alert('Reason is required.'); return; }
                         setIsProcessing(true);
                         try {
                           const newNote = `[HOLD] ${new Date().toLocaleString()}: ${reason.trim()}`;
                           const updatedNotes = selectedOrder.notes ? `${selectedOrder.notes}\n${newNote}` : newNote;
-                          await onUpdateOrder(selectedOrder.id, { status: OrderStatus.HOLD, holdReason: reason.trim(), previousStatus: selectedOrder.status, notes: updatedNotes, updatedAt: Date.now() });
-                          setSelectedOrder(prev => prev ? { ...prev, status: OrderStatus.HOLD, holdReason: reason.trim(), previousStatus: selectedOrder.status, notes: updatedNotes } : null);
-                          alert("Order put on HOLD.");
-                        } catch (e) { alert("Action failed."); } finally { setIsProcessing(false); }
+                          const updates = {
+                            status: OrderStatus.HOLD,
+                            holdReason: reason.trim(),
+                            previousStatus: selectedOrder.status,
+                            notes: updatedNotes,
+                            updatedAt: Date.now(),
+                          };
+                          await onUpdateOrder(selectedOrder.id, updates);
+                          setSelectedOrder(prev => prev ? { ...prev, ...updates } : null);
+                          alert('Order put on HOLD.');
+                        } catch (e) { alert('Action failed.'); }
+                        finally { setIsProcessing(false); }
                       }}
-                      className="px-5 py-3 bg-red-50 text-red-700 border border-red-200 rounded-xl font-bold hover:bg-red-100 transition-all disabled:opacity-50 text-xs"
+                      className="px-5 py-3.5 bg-red-50 text-red-700 border border-red-200 rounded-2xl text-xs font-bold hover:bg-red-100 transition-colors disabled:opacity-50"
                     >
                       Hold
                     </button>
@@ -299,42 +520,46 @@ export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrd
                   <button
                     onClick={handleFinishProduction}
                     disabled={isProcessing || selectedOrder.status === OrderStatus.HOLD}
-                    className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-70 text-sm"
+                    className="flex-1 py-3.5 bg-[#3C3489] text-white rounded-2xl text-xs font-bold hover:bg-[#2F286E] transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isProcessing ? (
-                      <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Finishing...</>
+                      <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Finishing…</>
                     ) : (
-                      <><CheckCircle size={16} />{selectedOrder.status === OrderStatus.HOLD ? 'Hold Active' : 'Finish Production & Move to Delivery'}</>
+                      <><CheckCircle size={16} /> {selectedOrder.status === OrderStatus.HOLD ? 'Hold active' : 'Finish & move to delivery'}</>
                     )}
                   </button>
                 </div>
               </div>
             </motion.div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center p-12 bg-white border border-dashed border-slate-200 rounded-3xl text-center min-h-64">
-              <div className="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center mb-4">
-                <Factory className="text-slate-300" size={32} />
-              </div>
-              <h4 className="text-base font-black text-slate-700">Work Station</h4>
-              <p className="text-slate-400 max-w-sm mt-2 text-xs font-medium">Pick an order to access design files and start production workflow.</p>
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </AnimatePresence>
 
+      {/* ── image viewer ── */}
+      {viewingImage && (
+        <ImageViewer
+          src={viewingImage}
+          onClose={() => setViewingImage(null)}
+          fileName={`Order_${selectedOrder?.id || ''}`}
+        />
+      )}
+
+      {/* ── hub order modal ── */}
       {selectedHubOrder && (
         <OrderDetailModal
           order={selectedHubOrder}
           onClose={() => setSelectedHubOrder(null)}
           isAdmin={isAdmin}
+          onReorder={onReorder}
           onUpdateOrder={async (id, updates) => {
             await onUpdateOrder(id, updates);
             setSelectedHubOrder(prev => prev && prev.id === id ? { ...prev, ...updates } : null);
           }}
           onUpdateStatus={(status) => {
             if (window.confirm(`Change order status to ${status}?`)) {
-              onUpdateOrder(selectedHubOrder.id, { status });
-              setSelectedHubOrder(prev => prev ? { ...prev, status } : null);
+              const updates = { status, updatedAt: Date.now() };
+              onUpdateOrder(selectedHubOrder.id, updates);
+              setSelectedHubOrder(prev => prev ? { ...prev, ...updates } : null);
             }
           }}
         />
@@ -342,17 +567,3 @@ export default function ProductionDashboard({ orders, onUpdateOrder, onDeleteOrd
     </div>
   );
 }
-
-const getStatusStyles = (status: OrderStatus) => {
-  switch (status) {
-    case OrderStatus.DRAFT: return 'bg-gray-100 text-gray-600';
-    case OrderStatus.ACCOUNTS: return 'bg-amber-100 text-amber-700';
-    case OrderStatus.DESIGN: return 'bg-purple-100 text-purple-700';
-    case OrderStatus.ORDER_MANAGEMENT: return 'bg-blue-100 text-blue-700';
-    case OrderStatus.PRODUCTION: return 'bg-purple-100 text-purple-700';
-    case OrderStatus.DELIVERY: return 'bg-orange-100 text-orange-700';
-    case OrderStatus.DELIVERED: return 'bg-green-100 text-green-700';
-    case OrderStatus.HOLD: return 'bg-red-100 text-red-700';
-    default: return 'bg-gray-100 text-gray-600';
-  }
-};
