@@ -330,12 +330,12 @@ export default function OrderManagementDashboard({
 
   const sendToDesigner = async () => {
     const textMsg = designMsgRequest.message.trim();
-    if (!textMsg && designMsgRequest.attachments.length === 0) { alert('Please provide a message or attachments.'); return; }
+    if (!textMsg) { alert('Please provide a message.'); return; }
     if (!selectedOrder) { alert('Please select an order first.'); return; }
     const timestamp = Date.now();
     const newNote = `[ORDER MGMT -> DESIGNER] ${new Date(timestamp).toLocaleString()}\n${textMsg}`;
     const updatedNotes = selectedOrder.notes ? `${selectedOrder.notes}\n\n${newNote}` : newNote;
-    const finalStaffImages = [...(selectedOrder.staffImages || []), ...designMsgRequest.attachments];
+    const finalStaffImages = selectedOrder.staffImages || [];
     const nextState = { ...selectedOrder, notes: updatedNotes, staffImages: finalStaffImages, status: OrderStatus.DESIGN, updatedAt: timestamp };
     if (!isOrderSizeValid(nextState)) { alert('Error: Total order data limit exceeded.'); return; }
     setIsProcessing(true);
@@ -343,8 +343,8 @@ export default function OrderManagementDashboard({
       const newChatMsg: ChatMessage = {
         id: `om_msg_${timestamp}_${Math.random().toString(36).substring(2, 6)}`,
         sender: 'Order Management', senderRole: 'order_management',
-        text: textMsg || `Sent attachments: ${designMsgRequest.attachments.length} file(s)`,
-        attachments: designMsgRequest.attachments, createdAt: timestamp,
+        text: textMsg,
+        attachments: [], createdAt: timestamp,
       };
       const storageKey = `pallywear_om_chats_designer_${selectedOrder.id}`;
       let existingMsgs: ChatMessage[] = [];
@@ -563,7 +563,7 @@ export default function OrderManagementDashboard({
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50">
-                  {['Order', 'Customer', 'Category', 'Qty', 'Status', 'Date', 'Amount', 'Actions'].map(h => (
+                  {['Order', 'Customer', 'Category', 'Qty', 'Status', 'Designer', 'Date', 'Amount', 'Actions'].map(h => (
                     <th key={h} className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-100">
                       {h}
                     </th>
@@ -608,6 +608,9 @@ export default function OrderManagementDashboard({
                         <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold', badgeClass)}>
                           {statusLabel}
                         </span>
+                      </td>
+                      <td className="px-5 py-4 text-gray-605 font-bold text-xs">
+                        {order.assignedDesigner || <span className="text-gray-350 font-normal italic text-[10px]">Unassigned</span>}
                       </td>
                       <td className="px-5 py-4">
                         <span className="text-xs text-gray-400">{new Date(order.updatedAt).toLocaleDateString()}</span>
@@ -1211,12 +1214,7 @@ export default function OrderManagementDashboard({
                 <label className="text-[9px] font-black text-purple-900 uppercase tracking-widest block mb-1">Type brand / design instructions</label>
                 <textarea rows={3} className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-600 outline-none text-xs font-medium resize-none" placeholder="Give placement advice, material comments, or feedback…" value={designMsgRequest.message} onChange={e => setDesignMsgRequest(prev => ({ ...prev, message: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendToDesigner(); } }} />
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Design files</span>
-                {designMsgRequest.attachments.length > 0 && <span className="text-[9px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded-full flex items-center gap-1"><Check size={9} /> {designMsgRequest.attachments.length} ready</span>}
-              </div>
-              <FileUpload label="Upload brand guidelines / refs" accept="image/*,.pdf text/plain" onFilesSelected={files => setDesignMsgRequest(prev => ({ ...prev, attachments: files }))} />
-              <button disabled={isProcessing || !selectedOrder || (!designMsgRequest.message.trim() && designMsgRequest.attachments.length === 0)} onClick={sendToDesigner} className="w-full py-3 bg-purple-600 text-white rounded-xl text-xs font-bold hover:bg-purple-700 flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none transition-colors">
+              <button disabled={isProcessing || !selectedOrder || !designMsgRequest.message.trim()} onClick={sendToDesigner} className="w-full py-3 bg-purple-600 text-white rounded-xl text-xs font-bold hover:bg-purple-700 flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none transition-colors">
                 {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send size={13} />} Send to design team
               </button>
             </div>

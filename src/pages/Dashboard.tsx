@@ -207,6 +207,8 @@ export default function Dashboard() {
   const [isInboxOpen, setIsInboxOpen] = React.useState(false);
   const [inboxSelectedId, setInboxSelectedId] = React.useState<string | null>(null);
   const [selectedDetailOrder, setSelectedDetailOrder] = React.useState<Order | null>(null);
+  const [sharingOrder, setSharingOrder] = React.useState<Order | null>(null);
+  const [sharingNotes, setSharingNotes] = React.useState('');
 
   // Notifications State & Sound Chime
   const [showNotifications, setShowNotifications] = React.useState(false);
@@ -920,6 +922,7 @@ export default function Dashboard() {
                                 <th className="px-6 py-3">Category</th>
                                 <th className="px-6 py-3">Qty</th>
                                 <th className="px-6 py-3">Status</th>
+                                <th className="px-6 py-3">Designer</th>
                                 <th className="px-6 py-3">Actions</th>
                                 <th className="px-6 py-3">Date</th>
                                 {showAmountDetails && <th className="px-6 py-3">Amount</th>}
@@ -927,7 +930,7 @@ export default function Dashboard() {
                             </thead>
                             <tbody className="divide-y divide-slate-50 text-xs">
                               {catOrders.length === 0 ? (
-                                <tr><td colSpan={showAmountDetails ? 8 : 7} className="px-6 py-12 text-center text-slate-400 italic">No orders in this category.</td></tr>
+                                <tr><td colSpan={showAmountDetails ? 9 : 8} className="px-6 py-12 text-center text-slate-400 italic">No orders in this category.</td></tr>
                               ) : catOrders.slice(0, 15).map(o => (
                                 <tr
                                   key={o.id}
@@ -953,12 +956,15 @@ export default function Dashboard() {
                                       {o.status}
                                     </span>
                                   </td>
+                                  <td className="px-6 py-3.5 font-bold text-slate-700">
+                                    {o.assignedDesigner || <span className="text-slate-350 font-normal italic text-[10px]">Unassigned</span>}
+                                  </td>
                                   <td className="px-6 py-3.5">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       {['pending', 'hold', 'draft', 'PENDING', 'HOLD', 'DRAFT'].includes(o.status) && (
                                         <>
                                           <button
-                                            onClick={(e) => { e.stopPropagation(); handleUpdateOrder(o.id, { status: 'design' as any }); }}
+                                            onClick={(e) => { e.stopPropagation(); setSharingOrder(o); }}
                                             className="bg-pink-50 hover:bg-pink-100 text-pink-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-pink-200 transition-colors cursor-pointer"
                                           >
                                             Share to Designers
@@ -1781,6 +1787,67 @@ export default function Dashboard() {
             setSelectedDetailOrder(prev => prev && prev.id === id ? { ...prev, ...updates } : null);
           }}
         />
+      )}
+
+      {sharingOrder && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-xl overflow-hidden border border-slate-100 p-6 space-y-4">
+            <h3 className="text-lg font-black text-slate-900 text-center">Share Order to Designers</h3>
+            
+            {sharingOrder.notes && (
+              <div className="bg-slate-50 border border-slate-150 rounded-xl p-3 max-h-32 overflow-y-auto">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Previous Notes</p>
+                <p className="text-[10.5px] text-gray-650 font-medium whitespace-pre-wrap">{sharingOrder.notes}</p>
+              </div>
+            )}
+
+            <div className="space-y-1.5 text-left">
+              <label className="text-[10px] font-black text-indigo-950 uppercase tracking-wider">Design Instructions / Notes</label>
+              <textarea
+                rows={4}
+                className="w-full px-3 py-2 bg-slate-55 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-650 focus:bg-white outline-none text-xs font-medium resize-none text-slate-800"
+                placeholder="Enter details, requirements, or changes for designers..."
+                value={sharingNotes}
+                onChange={(e) => setSharingNotes(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={async () => {
+                  const textMsg = sharingNotes.trim();
+                  const timestamp = new Date().toLocaleString();
+                  const newNote = `[STAFF -> DESIGNER] ${timestamp}: ${textMsg || 'No notes specified.'}`;
+                  const updatedNotes = sharingOrder.notes ? `${sharingOrder.notes}\n\n${newNote}` : newNote;
+                  try {
+                    await handleUpdateOrder(sharingOrder.id, {
+                      status: 'design' as any,
+                      notes: updatedNotes,
+                      updatedAt: Date.now()
+                    });
+                    setSharingOrder(null);
+                    setSharingNotes('');
+                    alert("Order successfully shared to Designers.");
+                  } catch (e) {
+                    alert("Failed to share order.");
+                  }
+                }}
+                className="px-4 py-3 bg-[#534AB7] hover:bg-[#3C3489] text-white rounded-2xl font-black text-xs uppercase tracking-wider cursor-pointer flex-1 text-center border-none"
+              >
+                Confirm Share
+              </button>
+              <button
+                onClick={() => {
+                  setSharingOrder(null);
+                  setSharingNotes('');
+                }}
+                className="px-4 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-wider cursor-pointer flex-1 text-center"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Leave request modal */}

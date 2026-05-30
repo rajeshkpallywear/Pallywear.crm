@@ -27,6 +27,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [confirmingTarget, setConfirmingTarget] = useState<'accounts' | 'design' | null>(null);
+  const [designNotes, setDesignNotes] = useState('');
 
   useEffect(() => {
     setEditedOrder(order);
@@ -123,7 +124,14 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                 <span className="bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-lg animate-pulse uppercase">URGENT</span>
               )}
             </div>
-            <span className="text-xs font-mono text-gray-400 mt-1 uppercase tracking-widest">Access Protocol - ID: #{order.id}</span>
+            <span className="text-xs font-mono text-gray-400 mt-1 uppercase tracking-widest flex flex-wrap items-center gap-x-4">
+              <span>Access Protocol - ID: #{order.id}</span>
+              {order.assignedDesigner && (
+                <span className="text-purple-650 font-black">
+                  🎨 Designer: {order.assignedDesigner}
+                </span>
+              )}
+            </span>
           </div>
           <div className="flex items-center gap-3">
             {!isEditing && onReorder && user?.role === 'user' && (
@@ -200,7 +208,9 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                   id: `design-${i}`,
                   source: 'Art Studio Design',
                   url,
-                  type: url.startsWith('data:image/') || url.includes('.png') || url.includes('.jpg') || url.includes('.jpeg') ? 'image' : 'other',
+                  type: url.startsWith('data:image/') || url.includes('.png') || url.includes('.jpg') || url.includes('.jpeg') 
+                    ? 'image' 
+                    : (url.startsWith('data:application/pdf') || url.includes('.pdf') ? 'pdf' : 'other'),
                   color: 'bg-purple-100/60 border-purple-200 text-purple-700',
                   textColor: 'text-purple-700'
                 });
@@ -376,6 +386,20 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
+              {order.notes && (
+                <div className="bg-purple-50/50 p-6 rounded-[32px] border border-purple-100 shadow-sm">
+                  <p className="text-[10px] font-black text-purple-900 uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-600 inline-block"></span>
+                    Order Specification Notes & History
+                  </p>
+                  <div className="bg-white rounded-2xl p-4 border border-purple-50/50 max-h-60 overflow-y-auto shadow-inner">
+                    <p className="text-xs font-semibold text-gray-700 leading-relaxed whitespace-pre-wrap">
+                      {order.notes}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-8">
                 <div className="bg-gray-50/50 p-6 rounded-[32px] border border-gray-100/50 shadow-sm">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Customer Contact</p>
@@ -798,22 +822,48 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                             )}
 
                             {confirmingTarget === 'design' ? (
-                              <div className="bg-purple-50 border border-purple-300 p-4 rounded-xl space-y-2 text-center">
-                                <p className="text-xs font-black text-purple-900 uppercase tracking-wider">Confirm manual send to Designers?</p>
-                                <div className="flex gap-2 justify-center">
+                              <div className="bg-purple-50 border border-purple-300 p-4 rounded-xl space-y-3 text-left">
+                                <p className="text-xs font-black text-purple-900 uppercase tracking-wider text-center">Send Order to Designers</p>
+                                
+                                {order.notes && (
+                                  <div className="bg-white border border-purple-105 rounded-lg p-2 max-h-32 overflow-y-auto">
+                                    <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-1">Previous Notes</p>
+                                    <p className="text-[10.5px] text-gray-600 font-medium whitespace-pre-wrap">{order.notes}</p>
+                                  </div>
+                                )}
+
+                                <div className="space-y-1">
+                                  <label className="text-[9.5px] font-black text-purple-700 uppercase tracking-wider">Design Instructions / Notes</label>
+                                  <textarea
+                                    rows={3}
+                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-600 outline-none text-xs font-medium resize-none text-gray-800"
+                                    placeholder="Enter instructions, notes or comments for designers..."
+                                    value={designNotes}
+                                    onChange={(e) => setDesignNotes(e.target.value)}
+                                  />
+                                </div>
+
+                                <div className="flex gap-2 justify-center pt-1">
                                   <button
                                     onClick={async () => {
+                                      const textMsg = designNotes.trim();
+                                      const timestamp = new Date().toLocaleString();
+                                      const newNote = `[STAFF -> DESIGNER] ${timestamp}: ${textMsg || 'No notes specified.'}`;
+                                      const updatedNotes = order.notes ? `${order.notes}\n\n${newNote}` : newNote;
+                                      
                                       setConfirmingTarget(null);
                                       setIsProcessingAction(true);
                                       try {
                                         if (onUpdateOrder) {
                                           await onUpdateOrder(order.id, {
                                             status: OrderStatus.DESIGN,
+                                            notes: updatedNotes,
                                             updatedAt: Date.now()
                                           });
                                         } else if (onUpdateStatus) {
                                           onUpdateStatus(OrderStatus.DESIGN);
                                         }
+                                        setDesignNotes('');
                                         alert("Order successfully sent to Designers.");
                                       } catch (e) {
                                         alert("Failed to send order.");
@@ -821,13 +871,16 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                                         setIsProcessingAction(false);
                                       }
                                     }}
-                                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-black text-[10px] uppercase tracking-wider cursor-pointer flex-1"
+                                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-black text-[10px] uppercase tracking-wider cursor-pointer flex-1 text-center"
                                   >
                                     Confirm Send
                                   </button>
                                   <button
-                                    onClick={() => setConfirmingTarget(null)}
-                                    className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg font-black text-[10px] uppercase tracking-wider cursor-pointer flex-1"
+                                    onClick={() => {
+                                      setConfirmingTarget(null);
+                                      setDesignNotes('');
+                                    }}
+                                    className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg font-black text-[10px] uppercase tracking-wider cursor-pointer flex-1 text-center"
                                   >
                                     Cancel
                                   </button>

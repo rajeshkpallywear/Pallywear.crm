@@ -413,6 +413,8 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
           await onUpdateOrder(selectedOrder.id, {
             status: OrderStatus.PENDING,
             notes: updatedNotes,
+            designAttachments: designFiles,
+            machineFiles: machineFiles,
             updatedAt: Date.now()
           });
           setSelectedOrder(null);
@@ -981,19 +983,6 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                 <ArrowLeftIcon size={15} />
                 Return to Sales/Staff
               </button>
-
-              {selectedOrder.status === OrderStatus.DESIGN && (
-                <button
-                  disabled={isProcessing || selectedOrder.status === OrderStatus.HOLD}
-                  onClick={handleSendToOrderManagement}
-                  className="px-6 py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-black uppercase text-xs tracking-wider transition-all scale-100 hover:scale-[1.02] border-none flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ml-auto"
-                >
-                  <Send size={15} />
-                  Send to Staff
-                </button>
-              )}
-
-
             </div>
           </motion.div>
         </div>
