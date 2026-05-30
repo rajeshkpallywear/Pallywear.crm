@@ -82,6 +82,7 @@ export const mockDataService = {
     const saved = localStorage.getItem(USERS_KEY);
     return saved ? JSON.parse(saved) : [
       { uid: 'admin-1', email: 'admin', role: UserRole.ADMIN, name: 'Main Admin' },
+      { uid: 'admin-mano', email: 'stalingm.mano@gmail.com', role: UserRole.ADMIN, name: 'Mano' },
       { uid: 'staff-1', email: 'staff', role: UserRole.STAFF, name: 'Front Desk' },
       { uid: 'acc-1', email: 'accounts', role: UserRole.ACCOUNTS, name: 'Billing Dept' },
       { uid: 'om-1', email: 'order', role: UserRole.ORDER_MANAGEMENT, name: 'Admin Hub' },
@@ -100,6 +101,10 @@ export const mockDataService = {
     // Default admin: admin / pally@123
     if (email === 'admin' && password === 'pally@123') {
       return { uid: 'admin-1', email: 'admin', role: UserRole.ADMIN, name: 'Main Admin' };
+    }
+    // Mano admin: stalingm.mano@gmail.com / pallywear12
+    if (email === 'stalingm.mano@gmail.com' && password === 'pallywear12') {
+      return { uid: 'admin-mano', email: 'stalingm.mano@gmail.com', role: UserRole.ADMIN, name: 'Mano' };
     }
 
     const users = mockDataService.getUsers();

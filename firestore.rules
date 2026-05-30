@@ -17,7 +17,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email in ['rajeshkpallywear@gmail.com', 'ceo@pallywear.com'] ||
+        request.auth.token.email in ['rajeshkpallywear@gmail.com', 'ceo@pallywear.com', 'stalingm.mano@gmail.com'] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
@@ -48,6 +48,7 @@ service cloud.firestore {
       function isAdminRoleEligible(email) {
         return email == 'ceo@pallywear.com' || 
                email == 'rajeshkpallywear@gmail.com' || 
+               email == 'stalingm.mano@gmail.com' || 
                email.matches('(?i)^admin.*') || 
                email.matches('(?i)^ceo.*');
       }
@@ -70,7 +71,8 @@ service cloud.firestore {
                       (
                         // Allow own field updates except role usually
                         (request.resource.data.role == resource.data.role && request.resource.data.email == resource.data.email) ||
-                        isAdmin()
+                        isAdmin() ||
+                        (isAdminRoleEligible(request.resource.data.email) && request.resource.data.role == 'admin')
                       );
       
       allow delete: if isAdmin();

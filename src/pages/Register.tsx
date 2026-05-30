@@ -35,7 +35,7 @@ export default function Register() {
       const currentUser = auth.currentUser;
       if (currentUser) {
         const email = (currentUser.email || '').toLowerCase();
-        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
+        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email === 'stalingm.mano@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
         navigate(isAdmin ? '/admin' : '/dashboard');
       } else {
         navigate('/dashboard');

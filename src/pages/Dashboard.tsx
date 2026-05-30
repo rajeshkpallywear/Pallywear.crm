@@ -87,6 +87,13 @@ export default function Dashboard() {
     return orders.filter(o => o.createdBy === user?.id);
   }, [orders, user]);
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (user && (user.role === 'admin' || user.role === UserRole.ADMIN)) {
+      navigate('/admin', { replace: true });
+    }
+  }, [user, navigate]);
+
   const [showProfileModal, setShowProfileModal] = React.useState(false);
 
   const defaultTab = React.useMemo(() => {

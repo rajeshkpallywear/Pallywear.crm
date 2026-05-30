@@ -94,7 +94,7 @@ export default function Login() {
       if (currentUser) {
         logLoginWithGPS(currentUser.uid, currentUser.email || '');
         const email = (currentUser.email || '').toLowerCase().trim();
-        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
+        const isAdmin = email === 'ceo@pallywear.com' || email === 'rajeshkpallywear@gmail.com' || email === 'stalingm.mano@gmail.com' || email.startsWith('admin') || email.startsWith('ceo');
         navigate(isAdmin ? '/admin' : '/dashboard');
       } else {
         navigate('/dashboard');
@@ -128,7 +128,7 @@ export default function Login() {
           logLoginWithGPS(currentUser.uid, currentUser.email || email);
         }
         const normalizedEmail = email.toLowerCase().trim();
-        const isAdmin = normalizedEmail === 'ceo@pallywear.com' || normalizedEmail === 'rajeshkpallywear@gmail.com' || normalizedEmail.startsWith('admin') || normalizedEmail.startsWith('ceo') || email === 'admin';
+        const isAdmin = normalizedEmail === 'ceo@pallywear.com' || normalizedEmail === 'rajeshkpallywear@gmail.com' || normalizedEmail === 'stalingm.mano@gmail.com' || normalizedEmail.startsWith('admin') || normalizedEmail.startsWith('ceo') || email === 'admin';
         navigate(isAdmin ? '/admin' : '/dashboard');
       } else {
         let message = result.message || 'Login failed';

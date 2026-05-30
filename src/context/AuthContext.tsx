@@ -95,6 +95,7 @@ const isAdminEmail = (email: string) => {
   const lowerEmail = email.toLowerCase();
   return lowerEmail === 'ceo@pallywear.com' ||
     lowerEmail === 'rajeshkpallywear@gmail.com' ||
+    lowerEmail === 'stalingm.mano@gmail.com' ||
     lowerEmail === 'admin' ||
     lowerEmail.startsWith('admin') ||
     lowerEmail.startsWith('ceo');
@@ -165,7 +166,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
               if (isEligibleForAdmin && userData.role !== 'admin') {
                 userData = { ...userData, role: 'admin' };
-                await updateDoc(userDocRef, { role: 'admin' });
+                try {
+                  await updateDoc(userDocRef, { role: 'admin' });
+                } catch (err) {
+                  console.warn('Non-blocking: Failed to update user role in Firestore:', err);
+                }
               }
 
               setUser(userData);
@@ -221,6 +226,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     let normalizedEmail = email.trim().toLowerCase();
+
+    // Auto-registration / auto-login for Mano
+    if (normalizedEmail === 'stalingm.mano@gmail.com' && password === 'pallywear12') {
+      try {
+        // Try standard sign in first
+        const result = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        const userDocRef = doc(db, 'users', result.user.uid);
+        const userDoc = await getDoc(userDocRef);
+
+        if (!userDoc.exists()) {
+          const newUser: User = {
+            id: result.user.uid,
+            email: normalizedEmail,
+            role: 'admin',
+            name: 'Mano',
+            createdAt: new Date().toISOString()
+          };
+          await setDoc(userDocRef, newUser);
+          setUser(newUser);
+        } else {
+          if (userDoc.data().role !== 'admin') {
+            try {
+              await updateDoc(userDocRef, { role: 'admin' });
+            } catch (err) {
+              console.warn('Non-blocking: Failed to update user role to admin on login:', err);
+            }
+            setUser({ ...userDoc.data(), id: result.user.uid, role: 'admin' } as User);
+          } else {
+            setUser({ ...userDoc.data(), id: result.user.uid } as User);
+          }
+        }
+        return { success: true };
+      } catch (error: any) {
+        // If user doesn't exist or credentials fail, we register them as admin if the password matches pallywear12
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+          try {
+            const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+            const firebaseUser = userCredential.user;
+            const newUser: User = {
+              id: firebaseUser.uid,
+              email: normalizedEmail,
+              role: 'admin',
+              name: 'Mano',
+              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent('Mano')}&background=3291B6&color=fff`,
+              createdAt: new Date().toISOString()
+            };
+            const userDocRef = doc(db, 'users', firebaseUser.uid);
+            await setDoc(userDocRef, newUser);
+            setUser(newUser);
+            return { success: true };
+          } catch (regError: any) {
+            console.error('Auto-registration of Mano failed:', regError);
+          }
+        }
+      }
+    }
 
     let portalName = '';
     // Removed shorthand portal mapping logic to enforce separate registered logins

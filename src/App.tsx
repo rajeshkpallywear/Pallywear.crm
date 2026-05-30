@@ -39,6 +39,11 @@ const ProtectedRoute = ({ children, adminOnly = false }: { children: React.React
     return <Navigate to="/dashboard" />;
   }
 
+  // Admin should be redirected to admin dashboard if accessing normal dashboard
+  if (!adminOnly && isAdmin) {
+    return <Navigate to="/admin" />;
+  }
+
   // Staff and other roles should stay on /dashboard to see their portals
   return children;
 };
