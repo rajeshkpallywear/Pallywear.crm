@@ -1,12 +1,12 @@
-
 import { motion } from 'motion/react';
-import { X, User, Phone, MapPin, FileText, Globe, Clock, AlertCircle, CheckCircle, Download } from 'lucide-react';
+import { X, User, Phone, MapPin, FileText, Globe, Clock, AlertCircle, CheckCircle, Download, Trash2, Plus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Order, OrderStatus, UserRole } from '../types';
 import ImageViewer from './ImageViewer';
 import WorkflowVisualizer from './WorkflowVisualizer';
 import React, { useState, useEffect } from 'react';
 import { downloadOrderPDF } from '../lib/pdfHelper';
+import { CATEGORIES, JERSEY_MATERIALS, JERSEY_MODELS, SLEEVE_OPTIONS, SHIRT_MATERIALS, SHIRT_MODELS, SHIRT_COLOURS, PRINT_TYPES, HOODIE_MODELS, HOODIE_COLOURS, SWEATSHIRT_COLOURS, PANT_MATERIALS, PANT_COLOURS, TSHIRT_MATERIALS, TSHIRT_COLOURS_MAP, OVERSIZED_MATERIALS, OVERSIZED_COLOURS, CORPORATE_GIFT_OPTIONS, SIZE_OPTIONS } from '../constants';
 
 interface OrderDetailModalProps {
   order: Order;
@@ -32,6 +32,121 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
   useEffect(() => {
     setEditedOrder(order);
   }, [order]);
+
+  const getMaterialsForCategory = (category: string) => {
+    switch (category) {
+      case 'Jersey': return JERSEY_MATERIALS;
+      case 'Shirt': return SHIRT_MATERIALS;
+      case 'Pant': return PANT_MATERIALS;
+      case 'T-Shirt': return TSHIRT_MATERIALS;
+      case 'Oversized': return OVERSIZED_MATERIALS;
+      default: return [];
+    }
+  };
+
+  const getModelsForCategory = (category: string) => {
+    switch (category) {
+      case 'Jersey': return JERSEY_MODELS;
+      case 'Shirt': return SHIRT_MODELS;
+      case 'Hoodie': return HOODIE_MODELS;
+      case 'T-Shirt': return ['Polo', 'Crewneck', 'V-Neck'];
+      case 'Corporate Gift': return CORPORATE_GIFT_OPTIONS;
+      default: return [];
+    }
+  };
+
+  const getColoursForCategory = (category: string, material?: string) => {
+    switch (category) {
+      case 'Shirt': return SHIRT_COLOURS;
+      case 'Hoodie': return HOODIE_COLOURS;
+      case 'Sweatshirt': return SWEATSHIRT_COLOURS;
+      case 'Pant': return PANT_COLOURS;
+      case 'T-Shirt':
+        if (material) {
+          const key = Object.keys(TSHIRT_COLOURS_MAP).find(k => k.toLowerCase() === material.toLowerCase());
+          return key ? TSHIRT_COLOURS_MAP[key] : (TSHIRT_COLOURS_MAP['Comfort'] || []);
+        }
+        return [];
+      case 'Oversized': return OVERSIZED_COLOURS;
+      default: return [];
+    }
+  };
+
+  const getSleevesForCategory = (category: string) => {
+    if (category === 'Jersey') return ['pull', 'half'];
+    if (['Shirt', 'T-Shirt'].includes(category)) return ['full', 'half'];
+    return [];
+  };
+
+  const getPocketsForCategory = (category: string) => {
+    if (['Shirt', 'T-Shirt'].includes(category)) return ['yes', 'no'];
+    return [];
+  };
+
+  const addSizeRow = () => {
+    const defaultCategory = editedOrder.category || CATEGORIES[0];
+    const newRow = {
+      category: defaultCategory,
+      size: SIZE_OPTIONS[0],
+      quantity: 1,
+      price: 0,
+      colour: '',
+      printType: PRINT_TYPES[0] || 'DTF',
+      sleeve: '',
+      pocket: '',
+      material: '',
+      model: ''
+    };
+    const updatedBreakdown = [...(editedOrder.sizeBreakdown || []), newRow];
+    const newTotal = updatedBreakdown.reduce((sum, item) => sum + (item.quantity * (item.price || 0)), 0);
+    const totalQuantity = updatedBreakdown.reduce((sum, item) => sum + item.quantity, 0);
+
+    setEditedOrder(prev => ({
+      ...prev,
+      sizeBreakdown: updatedBreakdown,
+      quantity: totalQuantity,
+      financials: {
+        ...prev.financials,
+        totalAmount: newTotal,
+        balanceAmount: newTotal - prev.financials.advancePay
+      }
+    }));
+  };
+
+  const removeSizeRow = (index: number) => {
+    const updatedBreakdown = (editedOrder.sizeBreakdown || []).filter((_, i) => i !== index);
+    const newTotal = updatedBreakdown.reduce((sum, item) => sum + (item.quantity * (item.price || 0)), 0);
+    const totalQuantity = updatedBreakdown.reduce((sum, item) => sum + item.quantity, 0);
+
+    setEditedOrder(prev => ({
+      ...prev,
+      sizeBreakdown: updatedBreakdown,
+      quantity: totalQuantity,
+      financials: {
+        ...prev.financials,
+        totalAmount: newTotal,
+        balanceAmount: newTotal - prev.financials.advancePay
+      }
+    }));
+  };
+
+  const updateSizeRow = (index: number, field: string, value: any) => {
+    const updatedBreakdown = [...(editedOrder.sizeBreakdown || [])];
+    updatedBreakdown[index] = { ...updatedBreakdown[index], [field]: value };
+    const newTotal = updatedBreakdown.reduce((sum, item) => sum + (item.quantity * (item.price || 0)), 0);
+    const totalQuantity = updatedBreakdown.reduce((sum, item) => sum + item.quantity, 0);
+
+    setEditedOrder(prev => ({
+      ...prev,
+      sizeBreakdown: updatedBreakdown,
+      quantity: totalQuantity,
+      financials: {
+        ...prev.financials,
+        totalAmount: newTotal,
+        balanceAmount: newTotal - prev.financials.advancePay
+      }
+    }));
+  };
 
   const handleDeleteAttachment = async (field: 'staffImages' | 'staffPdfs' | 'orderManagementAttachments' | 'designAttachments' | 'machineFiles' | 'accountsAttachments', index: number) => {
     if (!window.confirm("Are you sure you want to delete this attachment? This will free up database space.")) return;
@@ -156,7 +271,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                 <span>PDF Download</span>
               </button>
             )}
-            {isAdmin && !isEditing && (
+            {(isAdmin || (user && (order.createdBy === user.id || user.role === 'user' || user.role === 'marketing' || user.role === UserRole.MARKETING || user.role === UserRole.TELECALLER) && (order.status === OrderStatus.PENDING || order.status === OrderStatus.DRAFT))) && !isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
                 className="px-6 py-3 bg-brand-primary text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-brand-primary/90 transition-all shadow-md"
@@ -512,42 +627,244 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
               </div>
 
               <div className="bg-white border border-gray-100 rounded-[32px] shadow-sm p-6 overflow-hidden">
-                <div className="flex items-center justify-between mb-6">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Itemised Breakdown</p>
-                  <span className="px-3 py-1 bg-gray-50 text-gray-500 rounded-full text-[10px] font-black uppercase tracking-widest">
-                    {order.sizeBreakdown?.reduce((sum, i) => sum + i.quantity, 0) || order.quantity || 0} Total Units
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {order.sizeBreakdown?.map((item, idx) => (
-                    <div key={idx} className="p-4 bg-gray-50/50 rounded-2xl border border-gray-100 hover:border-brand-primary/20 transition-all">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-xs font-black text-brand-primary uppercase tracking-tight">{item.category}</span>
-                        <span className="text-xs font-black text-gray-900 bg-white px-2 py-1 rounded-lg border border-gray-100 shadow-sm">{item.size}</span>
+                {isEditing ? (
+                  <div className="space-y-6 font-sans">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-4 flex-wrap gap-4">
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Edit Measure Profile breakdown</h4>
+                        <p className="text-[11px] text-slate-400 font-medium">Add, remove, or modify size configurations and pricing details.</p>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                        {item.material && <div><span className="text-[8px] text-gray-400 block mb-0.5">Material</span>{item.material}</div>}
-                        {item.colour && <div><span className="text-[8px] text-gray-400 block mb-0.5">Colour</span>{item.colour}</div>}
-                        {item.printType && <div><span className="text-[8px] text-gray-400 block mb-0.5">Print</span>{item.printType}</div>}
-                        {item.model && <div><span className="text-[8px] text-gray-400 block mb-0.5">Model</span>{item.model}</div>}
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-end">
-                        <div className="flex items-center gap-4">
-                          <span className="text-[10px] font-black text-gray-900">Qty: {item.quantity}</span>
-                          {showAmountDetails && <span className="text-[10px] font-black text-brand-primary">Rate: ₹{item.price}</span>}
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Main Hub:</span>
+                          <select
+                            className="bg-slate-100 border border-slate-200 font-black text-slate-900 rounded-xl px-4 py-2 text-xs focus:ring-1 focus:ring-slate-900 outline-none"
+                            value={editedOrder.category}
+                            onChange={e => setEditedOrder({ ...editedOrder, category: e.target.value })}
+                          >
+                            {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          </select>
                         </div>
-                        {showAmountDetails && (
-                          <span className="text-xs font-black text-gray-900">Total: ₹{(item.quantity * (item.price || 0)).toLocaleString()}</span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={addSizeRow}
+                          className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all cursor-pointer"
+                        >
+                          <Plus size={14} /> Add Row
+                        </button>
                       </div>
                     </div>
-                  ))}
-                  {!order.sizeBreakdown?.length && (
-                    <div className="p-8 text-center text-gray-400 italic text-xs bg-gray-50 rounded-[24px]">
-                      No specific size breakdown available for this record.
+
+                    {(editedOrder.sizeBreakdown || []).length > 0 ? (
+                      <div className="space-y-4">
+                        {(editedOrder.sizeBreakdown || []).map((item, idx) => {
+                          const rowCategory = item.category || editedOrder.category || CATEGORIES[0];
+                          const materials = getMaterialsForCategory(rowCategory);
+                          const models = getModelsForCategory(rowCategory);
+                          const colours = getColoursForCategory(rowCategory, item.material);
+                          const sleeves = getSleevesForCategory(rowCategory);
+                          const pockets = getPocketsForCategory(rowCategory);
+
+                          return (
+                            <div key={idx} className="bg-slate-50/50 p-4 border border-slate-200 rounded-2xl space-y-3 relative group animate-in fade-in duration-200">
+                              <button
+                                type="button"
+                                onClick={() => removeSizeRow(idx)}
+                                className="absolute right-3 top-3 text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg transition-colors border border-transparent cursor-pointer"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-4 pr-8">
+                                {/* Row Hub Select */}
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black text-slate-400 uppercase">Hub</label>
+                                  <select
+                                    className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900 font-bold"
+                                    value={item.category || editedOrder.category}
+                                    onChange={e => updateSizeRow(idx, 'category', e.target.value)}
+                                  >
+                                    {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                  </select>
+                                </div>
+
+                                {/* Size */}
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black text-slate-400 uppercase">Size</label>
+                                  <select
+                                    className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900 font-bold"
+                                    value={item.size}
+                                    onChange={e => updateSizeRow(idx, 'size', e.target.value)}
+                                  >
+                                    {SIZE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                  </select>
+                                </div>
+
+                                {/* Qty */}
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black text-slate-400 uppercase">Qty</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={item.quantity}
+                                    className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs text-center focus:ring-1 focus:ring-slate-900 font-bold"
+                                    onChange={e => updateSizeRow(idx, 'quantity', parseInt(e.target.value) || 1)}
+                                  />
+                                </div>
+
+                                {/* Price */}
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black text-slate-400 uppercase">Price</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={item.price}
+                                    className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900 font-bold"
+                                    onChange={e => updateSizeRow(idx, 'price', parseFloat(e.target.value) || 0)}
+                                  />
+                                </div>
+
+                                {/* Material */}
+                                {materials.length > 0 && (
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase">Material</label>
+                                    <select
+                                      className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900"
+                                      value={item.material || ''}
+                                      onChange={e => updateSizeRow(idx, 'material', e.target.value)}
+                                    >
+                                      <option value="">None</option>
+                                      {materials.map(m => <option key={m} value={m}>{m}</option>)}
+                                    </select>
+                                  </div>
+                                )}
+
+                                {/* Model */}
+                                {models.length > 0 && (
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase">Model</label>
+                                    <select
+                                      className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900"
+                                      value={item.model || ''}
+                                      onChange={e => updateSizeRow(idx, 'model', e.target.value)}
+                                    >
+                                      <option value="">None</option>
+                                      {models.map(md => <option key={md} value={md}>{md}</option>)}
+                                    </select>
+                                  </div>
+                                )}
+
+                                {/* Color */}
+                                {colours.length > 0 && (
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase">Colour</label>
+                                    <select
+                                      className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900"
+                                      value={item.colour || ''}
+                                      onChange={e => updateSizeRow(idx, 'colour', e.target.value)}
+                                    >
+                                      <option value="">None</option>
+                                      {colours.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                  </div>
+                                )}
+
+                                {/* Sleeve */}
+                                {sleeves.length > 0 && (
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase">Sleeve</label>
+                                    <select
+                                      className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900"
+                                      value={item.sleeve || ''}
+                                      onChange={e => updateSizeRow(idx, 'sleeve', e.target.value)}
+                                    >
+                                      <option value="">None</option>
+                                      {sleeves.map(sl => <option key={sl} value={sl}>{sl}</option>)}
+                                    </select>
+                                  </div>
+                                )}
+
+                                {/* Pocket */}
+                                {pockets.length > 0 && (
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase">Pocket</label>
+                                    <select
+                                      className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900"
+                                      value={item.pocket || ''}
+                                      onChange={e => updateSizeRow(idx, 'pocket', e.target.value)}
+                                    >
+                                      <option value="">None</option>
+                                      {pockets.map(pk => <option key={pk} value={pk}>{pk}</option>)}
+                                    </select>
+                                  </div>
+                                )}
+
+                                {/* Print Type */}
+                                <div className="space-y-1">
+                                  <label className="text-[9px] font-black text-slate-400 uppercase">Print Type</label>
+                                  <select
+                                    className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900"
+                                    value={item.printType || 'DTF'}
+                                    onChange={e => updateSizeRow(idx, 'printType', e.target.value)}
+                                  >
+                                    {PRINT_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div
+                        onClick={addSizeRow}
+                        className="hover:border-slate-955 hover:bg-slate-100 text-slate-500 border border-dashed border-slate-300 rounded-[20px] p-8 text-center cursor-pointer flex flex-col items-center justify-center gap-2"
+                      >
+                        <Plus size={24} className="text-slate-400" />
+                        <span className="text-xs font-bold">No measurements recorded. Tap to add a size breakdown row.</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-6">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Itemised Breakdown</p>
+                      <span className="px-3 py-1 bg-gray-50 text-gray-500 rounded-full text-[10px] font-black uppercase tracking-widest">
+                        {order.sizeBreakdown?.reduce((sum, i) => sum + i.quantity, 0) || order.quantity || 0} Total Units
+                      </span>
                     </div>
-                  )}
-                </div>
+                    <div className="space-y-3">
+                      {order.sizeBreakdown?.map((item, idx) => (
+                        <div key={idx} className="p-4 bg-gray-50/50 rounded-2xl border border-gray-100 hover:border-brand-primary/20 transition-all">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-xs font-black text-brand-primary uppercase tracking-tight">{item.category}</span>
+                            <span className="text-xs font-black text-gray-900 bg-white px-2 py-1 rounded-lg border border-gray-100 shadow-sm">{item.size}</span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                            {item.material && <div><span className="text-[8px] text-gray-400 block mb-0.5">Material</span>{item.material}</div>}
+                            {item.colour && <div><span className="text-[8px] text-gray-400 block mb-0.5">Colour</span>{item.colour}</div>}
+                            {item.printType && <div><span className="text-[8px] text-gray-400 block mb-0.5">Print</span>{item.printType}</div>}
+                            {item.model && <div><span className="text-[8px] text-gray-400 block mb-0.5">Model</span>{item.model}</div>}
+                          </div>
+                          <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-end">
+                            <div className="flex items-center gap-4">
+                              <span className="text-[10px] font-black text-gray-900">Qty: {item.quantity}</span>
+                              {showAmountDetails && <span className="text-[10px] font-black text-brand-primary">Rate: ₹{item.price}</span>}
+                            </div>
+                            {showAmountDetails && (
+                              <span className="text-xs font-black text-gray-900">Total: ₹{(item.quantity * (item.price || 0)).toLocaleString()}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {!order.sizeBreakdown?.length && (
+                        <div className="p-8 text-center text-gray-400 italic text-xs bg-gray-50 rounded-[24px]">
+                          No specific size breakdown available for this record.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               {Object.keys(order.details || {}).length > 0 && (

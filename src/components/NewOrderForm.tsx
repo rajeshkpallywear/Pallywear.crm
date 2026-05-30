@@ -285,8 +285,7 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
                   const newCategory = e.target.value;
                   setFormData(prev => ({
                     ...prev,
-                    category: newCategory,
-                    sizeBreakdown: [] // Reset breakdown as category schema changed
+                    category: newCategory
                   }));
                 }}
               >
@@ -314,11 +313,12 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
             {formData.sizeBreakdown.length > 0 ? (
               <div className="space-y-3">
                 {formData.sizeBreakdown.map((item, idx) => {
-                  const materials = getMaterialsForCategory(formData.category);
-                  const models = getModelsForCategory(formData.category);
-                  const colours = getColoursForCategory(formData.category, item.material);
-                  const sleeves = getSleevesForCategory(formData.category);
-                  const pockets = getPocketsForCategory(formData.category);
+                  const rowCategory = item.category || formData.category;
+                  const materials = getMaterialsForCategory(rowCategory);
+                  const models = getModelsForCategory(rowCategory);
+                  const colours = getColoursForCategory(rowCategory, item.material);
+                  const sleeves = getSleevesForCategory(rowCategory);
+                  const pockets = getPocketsForCategory(rowCategory);
 
                   return (
                     <div key={idx} className="bg-white p-4 border border-slate-200 rounded-xl space-y-3 relative group animate-in fade-in duration-200">
@@ -331,6 +331,18 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
                       </button>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-4">
+                        {/* Hub (Category) Option */}
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-400 uppercase">Hub</label>
+                          <select
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:ring-1 focus:ring-slate-900 font-bold"
+                            value={item.category || formData.category}
+                            onChange={e => updateSizeRow(idx, 'category', e.target.value)}
+                          >
+                            {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          </select>
+                        </div>
+
                         {/* Size Option */}
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-slate-400 uppercase">Size</label>

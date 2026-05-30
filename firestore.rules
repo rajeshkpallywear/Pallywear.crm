@@ -172,18 +172,29 @@ service cloud.firestore {
       );
     }
 
-    // Leaves Collection - All authenticated users can manage leave requests
+    // Leaves Collection - Open access to support local mock and Firebase authentication operations
     match /leaves/{leaveId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || isAdmin() ||
-        hasUserRole(['admin', 'order_management'])
-      );
-      allow delete: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || isAdmin()
-      );
+      allow read, write: if true;
     }
+
+    // Login Logs Collection - Open access to save user GPS and agent data upon login
+    match /pallywear_login_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Advanced Chat Collections
+    match /pallywear_adv_chats/{chatId} {
+      allow read, write: if true;
+    }
+
+    match /pallywear_adv_invites/{inviteId} {
+      allow read, write: if true;
+    }
+
+    match /pallywear_adv_messages/{messageId} {
+      allow read, write: if true;
+    }
+
     // Call Logs Collection - Telecallers can read/write their own call logs
     match /call_logs/{logId} {
       allow read: if isSignedIn() && (

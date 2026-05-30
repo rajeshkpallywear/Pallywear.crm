@@ -147,6 +147,8 @@ export interface Order {
   holdReason?: string;
   previousStatus?: OrderStatus;
   assignedDesigner?: string;
+  createdBy?: string;
+  createdByName?: string;
 }
 
 export interface InventoryMovement {

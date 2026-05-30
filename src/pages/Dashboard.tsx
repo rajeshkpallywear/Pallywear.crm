@@ -175,9 +175,9 @@ export default function Dashboard() {
       
       const newLeave = {
         id: docId,
-        userId: uid,
-        userName: user.name,
-        userRole: user.role,
+        userId: uid || null,
+        userName: user.name || null,
+        userRole: user.role || null,
         date: dateString,
         type: leaveType,
         permissionHours: leaveType === 'hours_permission' ? parseInt(permissionHours, 10) || 1 : null,
