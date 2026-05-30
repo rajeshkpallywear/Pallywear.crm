@@ -384,7 +384,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
       setSelectedOrder(null);
       setDesignFiles([]);
       setMachineFiles([]);
-      alert("Success: Artwork output submitted and order sent to Order Management.");
+      alert("Success: Design artwork uploaded and order sent to Staff.");
     } catch (e) {
       console.error(e);
       alert("An error occurred while moving the order.");
@@ -645,7 +645,6 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
               <tr>
                 <th className="px-6 py-4">Descriptor Code</th>
                 <th className="px-6 py-4">Client Detail</th>
-                <th className="px-6 py-4">Design Requirement & Category</th>
                 <th className="px-6 py-4 text-center">Assigned Handler</th>
                 <th className="px-6 py-4 text-right">Action override</th>
               </tr>
@@ -680,16 +679,6 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                             )}
                           </div>
                           <div className="text-xs text-gray-500 font-semibold">{item.phone}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1 max-w-sm">
-                          <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-black uppercase tracking-tight w-fit border border-purple-150">
-                            {getDisplayCategory(item as any)}
-                          </span>
-                          <span className="text-xs text-gray-600 font-medium truncate block max-w-xs">
-                            {item.notes}
-                          </span>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center">
@@ -768,7 +757,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                 })
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-16 text-center text-gray-400 italic font-medium">
+                  <td colSpan={4} className="px-6 py-16 text-center text-gray-400 italic font-medium">
                     All clear! No pending design assets found in this pipeline state.
                   </td>
                 </tr>
@@ -999,8 +988,8 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                   onClick={handleSendToOrderManagement}
                   className="px-6 py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-black uppercase text-xs tracking-wider transition-all scale-100 hover:scale-[1.02] border-none flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ml-auto"
                 >
-                  <CheckCircle size={15} />
-                  Complete Design & Send
+                  <Send size={15} />
+                  Send to Staff
                 </button>
               )}
 

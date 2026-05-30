@@ -54,14 +54,24 @@ export default function DigitizingDashboard({ orders, onUpdateOrder, isAdmin }: 
     const matchesSearch = o.customerInfo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.id.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const relevantStatus = [OrderStatus.DESIGN, OrderStatus.ORDER_MANAGEMENT, OrderStatus.PRODUCTION].includes(o.status);
+    // All statuses visible to digitizer (active pipeline + delivered)
+    const relevantStatus = [
+      OrderStatus.DESIGN,
+      OrderStatus.ORDER_MANAGEMENT,
+      OrderStatus.PRODUCTION,
+      OrderStatus.DELIVERY,
+      OrderStatus.DELIVERED
+    ].includes(o.status);
 
     if (viewMode === 'pending') {
+      // Pending = has relevant status AND no machine files yet
       return matchesSearch && relevantStatus && !o.machineFiles?.length;
     } else {
-      return matchesSearch && (relevantStatus || o.status === OrderStatus.DELIVERY) && (o.machineFiles?.length || 0) > 0;
+      // Completed = has machine files (delivered or in late pipeline stages)
+      return matchesSearch && relevantStatus && (o.machineFiles?.length || 0) > 0;
     }
   });
+
 
   const handleUploadSpecs = async () => {
     if (!selectedOrder || uploadFiles.length === 0) return;
@@ -200,14 +210,14 @@ export default function DigitizingDashboard({ orders, onUpdateOrder, isAdmin }: 
             )}
           >
             <CheckCircle size={24} />
-            {filteredOrders.filter(o => {
-              const relevantStatus = [OrderStatus.DESIGN, OrderStatus.ORDER_MANAGEMENT, OrderStatus.PRODUCTION].includes(o.status);
-              return (relevantStatus || o.status === OrderStatus.DELIVERY) && (o.machineFiles?.length || 0) > 0;
+            {orders.filter(o => {
+              const relevantStatus = [OrderStatus.DESIGN, OrderStatus.ORDER_MANAGEMENT, OrderStatus.PRODUCTION, OrderStatus.DELIVERY, OrderStatus.DELIVERED].includes(o.status);
+              return relevantStatus && (o.machineFiles?.length || 0) > 0;
             }).length > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-white font-bold text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
                 {orders.filter(o => {
-                  const relevantStatus = [OrderStatus.DESIGN, OrderStatus.ORDER_MANAGEMENT, OrderStatus.PRODUCTION].includes(o.status);
-                  return (relevantStatus || o.status === OrderStatus.DELIVERY) && (o.machineFiles?.length || 0) > 0;
+                  const relevantStatus = [OrderStatus.DESIGN, OrderStatus.ORDER_MANAGEMENT, OrderStatus.PRODUCTION, OrderStatus.DELIVERY, OrderStatus.DELIVERED].includes(o.status);
+                  return relevantStatus && (o.machineFiles?.length || 0) > 0;
                 }).length}
               </span>
             )}

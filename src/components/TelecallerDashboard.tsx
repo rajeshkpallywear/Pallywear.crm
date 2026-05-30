@@ -262,14 +262,15 @@ export default function TelecallerDashboard() {
 
       setShowLeadModal(false);
       setSelectedCallForLead(null);
-      alert(`Lead for ${selectedCallForLead.customerName} successfully created!`);
+      alert(`✅ Lead for "${selectedCallForLead.customerName}" has been saved and assigned via round-robin to a team member!`);
     } catch (err) {
       console.error('Error adding lead:', err);
-      alert('Failed to create lead.');
+      alert('Failed to create lead: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSavingLead(false);
     }
   };
+
 
   const formatDuration = (seconds: number) => {
     if (seconds <= 0) return '--';

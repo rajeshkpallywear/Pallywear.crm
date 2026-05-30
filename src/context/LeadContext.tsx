@@ -127,8 +127,11 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     let unsubscribeLeads = () => { };
     if (user.role === 'admin' || user.role === 'marketing' || user.role === 'user' || user.role === 'staff' || user.role === 'telecaller' || user.role === UserRole.TELECALLER) {
       const leadsRef = collection(db, 'leads');
-      // If admin or staff, show all leads. Otherwise, show only leads created by the user.
-      const qLeads = (user.role === 'admin' || user.role === 'staff')
+      // Admin/staff see all leads. Telecaller sees all leads they can create.
+      // Regular users only see leads assigned/created to them.
+      const isAdminOrStaff = user.role === 'admin' || user.role === 'staff';
+      const isTelecaller = user.role === 'telecaller' || user.role === UserRole.TELECALLER;
+      const qLeads = (isAdminOrStaff || isTelecaller)
         ? query(leadsRef)
         : query(leadsRef, where('createdBy', '==', user.id));
 
@@ -142,6 +145,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         handleFirestoreError(error, OperationType.LIST, 'leads');
       });
     }
+
 
     // Invoices subscription - only for applicable roles
     let unsubscribeInvoices = () => { };
@@ -201,39 +205,47 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   const addLead = async (lead: Omit<Lead, 'id'>) => {
     if (!user) return;
 
-    // A to Z Sorted Round-Robin target users
-    const ASSIGNEES = ['Arumugam', 'Deepika', 'Mohan', 'Vimal', 'Vivek', 'Yuvaraj'];
-    
-    // Retrieve next round-robin index from Firestore settings
-    let nextIndex = 0;
-    const settingsRef = doc(db, 'settings', 'lead_assignment');
-    try {
-      const snap = await getDoc(settingsRef);
-      if (snap.exists()) {
-        const lastIndex = snap.data().lastIndex ?? -1;
-        nextIndex = (lastIndex + 1) % ASSIGNEES.length;
+    let assignedId = user.id;
+    let assignedFullName = user.name;
+
+    // Only telecallers use round-robin assignment to users
+    const isTelecaller = user.role === 'telecaller' || user.role === UserRole.TELECALLER;
+
+    if (isTelecaller) {
+      // A to Z Sorted Round-Robin target users
+      const ASSIGNEES = ['Arumugam', 'Deepika', 'Mohan', 'Vimal', 'Vivek', 'Yuvaraj'];
+      
+      // Retrieve next round-robin index from Firestore settings
+      let nextIndex = 0;
+      const settingsRef = doc(db, 'settings', 'lead_assignment');
+      try {
+        const snap = await getDoc(settingsRef);
+        if (snap.exists()) {
+          const lastIndex = snap.data().lastIndex ?? -1;
+          nextIndex = (lastIndex + 1) % ASSIGNEES.length;
+        }
+      } catch (e) {
+        console.warn("Failed to retrieve round-robin settings, defaulting to index 0:", e);
       }
-    } catch (e) {
-      console.warn("Failed to retrieve round-robin settings, defaulting to index 0:", e);
+
+      // Persist next index in settings
+      try {
+        await setDoc(settingsRef, { lastIndex: nextIndex });
+      } catch (e) {
+        console.error("Failed to update round-robin index:", e);
+      }
+
+      const assignedName = ASSIGNEES[nextIndex];
+      
+      // Find matched registered user
+      const matchedUser = registeredUsers.find(u => 
+        u.name?.toLowerCase().trim() === assignedName.toLowerCase().trim() ||
+        u.email?.toLowerCase().startsWith(assignedName.toLowerCase())
+      );
+
+      assignedId = matchedUser ? matchedUser.id : `round_robin_${assignedName.toLowerCase()}`;
+      assignedFullName = matchedUser ? matchedUser.name : assignedName;
     }
-
-    // Persist next index in settings
-    try {
-      await setDoc(settingsRef, { lastIndex: nextIndex });
-    } catch (e) {
-      console.error("Failed to update round-robin index:", e);
-    }
-
-    const assignedName = ASSIGNEES[nextIndex];
-    
-    // Find matched registered user
-    const matchedUser = registeredUsers.find(u => 
-      u.name?.toLowerCase().trim() === assignedName.toLowerCase().trim() ||
-      u.email?.toLowerCase().startsWith(assignedName.toLowerCase())
-    );
-
-    const assignedId = matchedUser ? matchedUser.id : `round_robin_${assignedName.toLowerCase()}`;
-    const assignedFullName = matchedUser ? matchedUser.name : assignedName;
 
     const leadId = Math.random().toString(36).substring(2, 9);
     const newLead = sanitizeForFirestore({
@@ -250,6 +262,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       handleFirestoreError(error, OperationType.CREATE, `leads/${leadId}`);
     }
   };
+
 
   const updateLead = async (id: string, leadUpdate: Partial<Lead>) => {
     try {

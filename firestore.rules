@@ -100,9 +100,14 @@ service cloud.firestore {
 
       allow get, list: if canReadLeads();
       
-      allow create: if isSignedIn() && isValidId(leadId) && (request.resource.data.createdBy == request.auth.uid) && isValidLead(request.resource.data);
+      // Telecallers can create leads assigned to any user (round-robin)
+      // Regular users create only their own leads
+      allow create: if isSignedIn() && isValidId(leadId) && isValidLead(request.resource.data) && (
+        hasUserRole(['telecaller']) ||
+        request.resource.data.createdBy == request.auth.uid
+      );
       
-      allow update: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin() || hasUserRole(['marketing', 'admin'])) && 
+      allow update: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin() || hasUserRole(['marketing', 'admin', 'telecaller'])) && 
                       isValidLead(request.resource.data) &&
                       request.resource.data.createdBy == resource.data.createdBy;
                       
@@ -153,7 +158,7 @@ service cloud.firestore {
     // App Settings
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || hasUserRole(['admin', 'telecaller', 'staff', 'order_management']);
     }
 
     // Inventory Collection
@@ -165,9 +170,27 @@ service cloud.firestore {
       );
     }
 
-    // Leaves Collection
+    // Leaves Collection - All authenticated users can manage leave requests
     match /leaves/{leaveId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || isAdmin() ||
+        hasUserRole(['admin', 'order_management'])
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || isAdmin()
+      );
+    }
+    // Call Logs Collection - Telecallers can read/write their own call logs
+    match /call_logs/{logId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        hasUserRole(['admin', 'telecaller', 'staff', 'order_management'])
+      );
+      allow create: if isSignedIn() && hasUserRole(['telecaller', 'admin', 'staff']);
+      allow update: if isSignedIn() && (resource.data.agentId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.agentId == request.auth.uid || isAdmin());
     }
   }
 }

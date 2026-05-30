@@ -9,8 +9,6 @@ import {
   Users,
   Send,
   Search,
-  FileText,
-  Upload,
   CheckCircle,
   AlertCircle,
   Package,
@@ -18,7 +16,6 @@ import {
 } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { getDisplayCategory, cn } from '../lib/utils';
-import FileUpload from './FileUpload';
 
 interface DigitizerCommunicationProps {
   orders: Order[];
@@ -29,7 +26,6 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [message, setMessage] = useState('');
-  const [attachments, setAttachments] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
 
   // Focus on orders that are typically in design or management stage
@@ -44,8 +40,8 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
       return;
     }
 
-    if (!message && attachments.length === 0) {
-      alert("Please provide a message or attachments.");
+    if (!message.trim()) {
+      alert("Please provide a message.");
       return;
     }
 
@@ -57,14 +53,11 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
 
       await onUpdateOrder(selectedOrder.id, {
         notes: updatedNotes,
-        designAttachments: [...(selectedOrder.designAttachments || []), ...attachments],
         updatedAt: Date.now()
       });
 
       alert(`Instructions sent to Digitizing for order #${selectedOrder.id.slice(-6)}`);
       setMessage('');
-      setAttachments([]);
-      // Refresh local selection if needed (context will handle it usually)
     } catch (error) {
       console.error(error);
       alert("Failed to send instructions.");
@@ -147,7 +140,7 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
                   <p className="text-xs text-gray-500 font-medium">Order: #{selectedOrder.id.slice(-8)} | Client: {selectedOrder.customerInfo.name}</p>
                 </div>
                 <button
-                  disabled={isSending || (!message && attachments.length === 0)}
+                  disabled={isSending || !message.trim()}
                   onClick={handleSend}
                   className="px-6 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
                 >
@@ -160,47 +153,12 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
                 <div className="space-y-3">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Instructions for Embroidery team</label>
                   <textarea
-                    rows={6}
+                    rows={8}
                     className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-brand-primary outline-none text-sm font-medium resize-none shadow-inner"
                     placeholder="Provide specific details about stitching, thread counts, or placement..."
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                   />
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Artwork & PDF Attachments</label>
-                    <span className="text-[9px] text-brand-primary font-black uppercase">Images/PDF Only</span>
-                  </div>
-                  <FileUpload
-                    label="Upload Reference Artworks (Images/PDF - Max 100MB)"
-                    accept="image/*,.pdf"
-                    onFilesSelected={(files) => setAttachments(prev => [...prev, ...files])}
-                  />
-
-                  {attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-3">
-                      {attachments.map((file, i) => (
-                        <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm">
-                          {file.startsWith('data:image/') ? (
-                            <img src={file} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center gap-1">
-                              <FileText size={24} className="text-brand-primary" />
-                              <span className="text-[8px] font-black">PDF</span>
-                            </div>
-                          )}
-                          <button
-                            onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-sm"
-                          >
-                            <Users size={8} className="rotate-45" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl">
@@ -217,7 +175,7 @@ export default function DigitizerCommunication({ orders, onUpdateOrder }: Digiti
 
               <div className="p-8 bg-gray-50/50 border-t border-gray-100">
                 <button
-                  disabled={isSending || (!message && attachments.length === 0)}
+                  disabled={isSending || !message.trim()}
                   onClick={handleSend}
                   className="w-full py-5 bg-black text-white rounded-[2rem] font-bold hover:bg-gray-800 transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-3 disabled:opacity-50 active:scale-[0.98]"
                 >
