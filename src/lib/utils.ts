@@ -35,3 +35,34 @@ export function isOrderSizeValid(order: any, extraSize: number = 0): boolean {
 
   return totalSize < limit;
 }
+
+export function isAttachmentImage(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.startsWith('data:image/') || 
+         url.includes('image/') || 
+         url.startsWith('FIRESTORE_ATTACHMENT:image:') || 
+         url.includes('.png') || 
+         url.includes('.jpg') || 
+         url.includes('.jpeg');
+}
+
+export function isAttachmentPdf(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.startsWith('data:application/pdf') || 
+         url.startsWith('FIRESTORE_ATTACHMENT:pdf:') || 
+         url.includes('.pdf');
+}
+
+export function isAttachmentZip(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.startsWith('data:application/zip') || 
+         url.startsWith('data:application/x-zip-compressed') || 
+         url.startsWith('FIRESTORE_ATTACHMENT:zip:') || 
+         url.includes('zip');
+}
+
+export function isAttachmentAudio(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.startsWith('data:audio/') || 
+         url.startsWith('FIRESTORE_ATTACHMENT:audio:');
+}

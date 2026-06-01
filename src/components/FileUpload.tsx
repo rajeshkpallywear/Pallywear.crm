@@ -7,6 +7,8 @@ import { useState, useRef, ChangeEvent } from 'react';
 import { Upload, X, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { saveFileToLocalDB } from '../lib/indexedDbHelper';
 import imageCompression from 'browser-image-compression';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface FileUploadProps {
   label: string;
@@ -56,16 +58,31 @@ export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accep
         });
 
         let finalData = data;
-        // If file is larger than 600KB, store in IndexedDB as fallback
-        if (fileToProcess.size > 600 * 1024) {
+        let typePrefix = 'other';
+        if (file.type.startsWith('image/')) {
+          typePrefix = 'image';
+        } else if (file.type.includes('pdf')) {
+          typePrefix = 'pdf';
+        } else if (file.type.includes('zip')) {
+          typePrefix = 'zip';
+        }
+
+        const attachmentId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        try {
+          await setDoc(doc(db, 'attachments', attachmentId), {
+            id: attachmentId,
+            data: data,
+            name: file.name,
+            createdAt: Date.now()
+          });
+          await saveFileToLocalDB(attachmentId, data);
+          finalData = `FIRESTORE_ATTACHMENT:${typePrefix}:${attachmentId}`;
+        } catch (uploadErr) {
+          console.error("Failed to upload to Firestore attachments, fallback to IndexedDB:", uploadErr);
           const key = `file_${file.name.replace(/[^a-zA-Z0-9]/g, '_')}_${fileToProcess.size}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-          try {
-            await saveFileToLocalDB(key, data);
-            const mimeType = data.split(';base64,')[0];
-            finalData = `${mimeType};base64,IDB_${key}`;
-          } catch (dbErr) {
-            console.error('Failed to save to local DB, fallback to original:', dbErr);
-          }
+          await saveFileToLocalDB(key, data);
+          const mimeType = data.split(';base64,')[0];
+          finalData = `${mimeType};base64,IDB_${key}`;
         }
 
         processedFiles.push({

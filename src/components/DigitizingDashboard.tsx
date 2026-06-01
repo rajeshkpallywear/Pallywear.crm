@@ -23,7 +23,7 @@ import {
   X
 } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
-import { getDisplayCategory, cn, isOrderSizeValid } from '../lib/utils';
+import { getDisplayCategory, cn, isOrderSizeValid, isAttachmentImage } from '../lib/utils';
 import FileUpload from './FileUpload';
 import ImageViewer from './ImageViewer';
 
@@ -358,7 +358,7 @@ export default function DigitizingDashboard({ orders, onUpdateOrder, isAdmin }: 
                 <div className="grid grid-cols-2 gap-3">
                   {[...(selectedOrder.staffImages || []), ...(selectedOrder.staffPdfs || []), ...(selectedOrder.designAttachments || [])].map((file, i) => (
                     <div key={i} className="group relative aspect-square bg-gray-50 rounded-[18px] border border-gray-100 overflow-hidden flex flex-col items-center justify-center transition-all hover:border-indigo-200">
-                      {file.startsWith('data:image/') ? (
+                      {isAttachmentImage(file) ? (
                         <img src={file} className="w-full h-full object-cover" />
                       ) : (
                         <div className="text-center p-4">
@@ -368,7 +368,7 @@ export default function DigitizingDashboard({ orders, onUpdateOrder, isAdmin }: 
                       )}
 
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        {file.startsWith('data:image/') && (
+                        {isAttachmentImage(file) && (
                           <button
                             onClick={() => setViewingImage(file)}
                             className="p-2 bg-white/20 hover:bg-white/40 rounded-xl text-white transition-all"

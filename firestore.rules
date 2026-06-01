@@ -163,6 +163,11 @@ service cloud.firestore {
       allow write: if isAdmin() || hasUserRole(['admin', 'telecaller', 'staff', 'order_management']);
     }
 
+    // Attachments Collection
+    match /attachments/{attachmentId} {
+      allow read, write: if isSignedIn();
+    }
+
     // Inventory Collection
     match /inventory/{itemId} {
       allow read: if isSignedIn();

@@ -33,7 +33,7 @@ import { Order, OrderStatus } from '../types';
 import FileUpload from './FileUpload';
 import ImageViewer from './ImageViewer';
 import OrderDetailModal from './OrderDetailModal';
-import { cn, getDisplayCategory, isOrderSizeValid } from '../lib/utils';
+import { cn, getDisplayCategory, isOrderSizeValid, isAttachmentImage, isAttachmentAudio } from '../lib/utils';
 import ConversationDashboard, { Conversation } from './ConversationDashboard';
 
 interface DesignDashboardProps {
@@ -73,6 +73,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
 
   // Local File Assemble State
   const [designFiles, setDesignFiles] = useState<string[]>([]);
+  const [newDesignFiles, setNewDesignFiles] = useState<string[]>([]);
   const [machineFiles, setMachineFiles] = useState<string[]>([]);
 
   // Local Conversations List (Staff Conversations)
@@ -300,6 +301,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
           setSelectedOrder(fullOrder);
           // Initialize file arrays
           setDesignFiles(fullOrder.designAttachments || []);
+          setNewDesignFiles([]);
           setMachineFiles(fullOrder.machineFiles || []);
         }
       } else {
@@ -336,6 +338,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
       if (fullOrder) {
         setSelectedOrder(fullOrder);
         setDesignFiles(fullOrder.designAttachments || []);
+        setNewDesignFiles([]);
         setMachineFiles(fullOrder.machineFiles || []);
       }
     } else {
@@ -362,9 +365,11 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
   const handleSendToOrderManagement = async () => {
     if (!selectedOrder || isProcessing) return;
 
+    const allDesignAttachments = [...designFiles, ...newDesignFiles];
+
     const nextOrderState = {
       ...selectedOrder,
-      designAttachments: designFiles,
+      designAttachments: allDesignAttachments,
       machineFiles: machineFiles
     };
 
@@ -377,12 +382,13 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
     try {
       await onUpdateOrder(selectedOrder.id, {
         status: OrderStatus.ORDER_MANAGEMENT,
-        designAttachments: designFiles,
+        designAttachments: allDesignAttachments,
         machineFiles: machineFiles,
         updatedAt: Date.now()
       });
       setSelectedOrder(null);
       setDesignFiles([]);
+      setNewDesignFiles([]);
       setMachineFiles([]);
       alert("Success: Design artwork uploaded and order sent to Staff.");
     } catch (e) {
@@ -410,14 +416,17 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
           const newNote = `[REWORK RETURNED BY DESIGNER] ${new Date().toLocaleString()}: ${reason.trim()}`;
           const updatedNotes = selectedOrder.notes ? `${selectedOrder.notes}\n\n${newNote}` : newNote;
 
+          const allDesignAttachments = [...designFiles, ...newDesignFiles];
+
           await onUpdateOrder(selectedOrder.id, {
             status: OrderStatus.PENDING,
             notes: updatedNotes,
-            designAttachments: designFiles,
+            designAttachments: allDesignAttachments,
             machineFiles: machineFiles,
             updatedAt: Date.now()
           });
           setSelectedOrder(null);
+          setNewDesignFiles([]);
           setCustomPrompt(null);
           alert("Order returned to Staff successfully.");
         } catch (e) {
@@ -709,7 +718,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                             {((item as any).designAttachments || []).length > 0 && (
                               <div className="flex items-center gap-1">
                                 {((item as any).designAttachments || []).map((file: string, idx: number) => {
-                                  const isImage = file.startsWith('data:image/') || file.includes('image/');
+                                  const isImage = isAttachmentImage(file);
                                   return (
                                     <div
                                       key={idx}
@@ -790,6 +799,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                 onClick={() => {
                   setSelectedOrder(null);
                   setDesignFiles([]);
+                  setNewDesignFiles([]);
                   setMachineFiles([]);
                 }}
                 className="p-2 hover:bg-gray-100 rounded-full transition-colors border-none bg-transparent cursor-pointer"
@@ -865,11 +875,11 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                     </h4>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {[...(selectedOrder.staffImages || []), ...(selectedOrder.staffPdfs || [])].map((file, i) => {
-                        const isAudio = file.startsWith('data:audio/');
+                        const isAudio = isAttachmentAudio(file);
                         return (
                           <div key={i} className="flex flex-col gap-2 p-2 bg-gray-50 rounded-2xl border border-gray-100 group relative">
                             <div className="aspect-square rounded-xl overflow-hidden relative bg-white flex items-center justify-center border border-gray-150">
-                              {file.startsWith('data:image/') ? (
+                              {isAttachmentImage(file) ? (
                                 <img src={file} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                               ) : isAudio ? (
                                 <div className="flex flex-col items-center gap-2 text-purple-600">
@@ -884,7 +894,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                               )}
 
                               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
-                                {file.startsWith('data:image/') && (
+                                {isAttachmentImage(file) && (
                                   <button
                                     onClick={() => setViewingImage(file)}
                                     className="p-1.5 bg-white/20 hover:bg-white/40 rounded-full text-white transition-all border-none cursor-pointer"
@@ -929,7 +939,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                         <FileUpload
                           label=""
                           accept=".pdf,image/*"
-                          onFilesSelected={(files) => setDesignFiles(prev => [...prev, ...files])}
+                          onFilesSelected={(files) => setNewDesignFiles(files)}
                         />
                         <div className="max-h-[80px] overflow-y-auto space-y-1 mt-2">
                           {designFiles.map((file, i) => (

@@ -33,7 +33,7 @@ export interface Conversation {
   pdfAttachments?: string[];
   createdAt: number;
 }
-import { cn } from '../lib/utils';
+import { cn, isAttachmentZip } from '../lib/utils';
 
 export interface Chat {
   id: string;
@@ -1040,7 +1040,7 @@ export default function ConversationDashboard({
                       {msg.pdfAttachments && msg.pdfAttachments.length > 0 && (
                         <div className="space-y-1.5 mt-2">
                           {msg.pdfAttachments.map((file, i) => {
-                            const isZip = file.startsWith('data:application/zip') || file.startsWith('data:application/x-zip-compressed') || file.includes('zip');
+                            const isZip = isAttachmentZip(file);
                             return (
                               <a
                                 key={i}

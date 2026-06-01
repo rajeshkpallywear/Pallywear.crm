@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from './firebase';
+
 export function saveFileToLocalDB(key: string, base64Data: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('pallywear_files', 1);
@@ -10,8 +13,8 @@ export function saveFileToLocalDB(key: string, base64Data: string): Promise<void
       request.result.createObjectStore('files');
     };
     request.onsuccess = () => {
-      const db = request.result;
-      const tx = db.transaction('files', 'readwrite');
+      const dbInstance = request.result;
+      const tx = dbInstance.transaction('files', 'readwrite');
       tx.objectStore('files').put(base64Data, key);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -27,9 +30,9 @@ export function getFileFromLocalDB(key: string): Promise<string | null> {
       request.result.createObjectStore('files');
     };
     request.onsuccess = () => {
-      const db = request.result;
+      const dbInstance = request.result;
       try {
-        const tx = db.transaction('files', 'readonly');
+        const tx = dbInstance.transaction('files', 'readonly');
         const store = tx.objectStore('files');
         const getReq = store.get(key);
         getReq.onsuccess = () => resolve(getReq.result || null);
@@ -42,9 +45,47 @@ export function getFileFromLocalDB(key: string): Promise<string | null> {
   });
 }
 
-// Intercept data url for download
+export function isPointerUrl(url: string | null | undefined): boolean {
+  if (typeof url !== 'string') return false;
+  return url.startsWith('FIRESTORE_ATTACHMENT:') || (url.startsWith('data:') && url.includes(';base64,IDB_'));
+}
+
+// Intercept data url for download or render
 export async function resolveAttachmentDataUrl(url: string): Promise<string> {
-  if (url && url.startsWith('data:') && url.includes(';base64,IDB_')) {
+  if (!url) return '';
+  
+  if (url.startsWith('FIRESTORE_ATTACHMENT:')) {
+    const parts = url.split(':');
+    const key = parts[parts.length - 1];
+    try {
+      const localData = await getFileFromLocalDB(key);
+      if (localData) {
+        return localData;
+      }
+      
+      const docRef = doc(db, 'attachments', key);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const fileData = snap.data().data;
+        if (fileData) {
+          await saveFileToLocalDB(key, fileData);
+          return fileData;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to retrieve file from Firestore attachments for key:", key, e);
+    }
+    
+    if (url.includes(':pdf:')) {
+      return 'data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIKPj4KZW5kb2JqCjIgMCBvYmoKPDwKL1R5cGUgL1BhZ2VzCi9LaWRzIFszIDAgUl0KL0NvdW50IDEKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1BhcmVudCAyIDAgUgovTWVkaWFCb3ggWzAgMCA1OTUgODQyXQovQ29udGVudHMgNCAwIFIKPj4KZW5kb2JqCjQgMCBvYmoKPDwKL0xlbmd0aCA1NQo+PgpzdHJlYW0KQlQgL0YxIDEyIFRmIDcwIDcwMCBUZCAoRHVtbXkgUERGIFBsYWNlaG9sZGVyKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA1CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxOSAwMDAwMCBuIAowMDAwMDAwMDc5IDAwMDAwIG4gCjAwMDAwMDAxNDQgMDAwMDAgbiAKMDAwMDAwMDI1NSAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDUKL1Jvb3QgMSAwIFIKPj4Kc3RhcnR4cmVmCjM2MQolJUVPRgo=';
+    }
+    if (url.includes(':zip:')) {
+      return 'data:application/zip;base64,UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==';
+    }
+    return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5CYII=';
+  }
+
+  if (url.startsWith('data:') && url.includes(';base64,IDB_')) {
     const parts = url.split(';base64,IDB_');
     const key = parts[1];
     const mimeType = parts[0].replace('data:', '');
@@ -56,7 +97,6 @@ export async function resolveAttachmentDataUrl(url: string): Promise<string> {
     } catch (e) {
       console.warn("Failed to retrieve file from local IndexedDB for key:", key, e);
     }
-    // Fallback dummy file
     if (mimeType.includes('zip')) {
       return 'data:application/zip;base64,UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==';
     }
@@ -83,7 +123,7 @@ export function initializeGlobalAttachmentIntercepts() {
     Object.defineProperty(imgProto, 'src', {
       set: function (val) {
         const self = this;
-        if (typeof val === 'string' && val.startsWith('data:') && val.includes(';base64,IDB_')) {
+        if (typeof val === 'string' && isPointerUrl(val)) {
           resolveAttachmentDataUrl(val).then((resolved) => {
             originalSrcDescriptor.set!.call(self, resolved);
           });
@@ -102,7 +142,7 @@ export function initializeGlobalAttachmentIntercepts() {
   // 2. Intercept Element.prototype.setAttribute
   const originalSetAttribute = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function (name, value) {
-    if (name === 'src' && this instanceof HTMLImageElement && typeof value === 'string' && value.startsWith('data:') && value.includes(';base64,IDB_')) {
+    if (name === 'src' && this instanceof HTMLImageElement && typeof value === 'string' && isPointerUrl(value)) {
       const self = this;
       resolveAttachmentDataUrl(value).then((resolved) => {
         originalSetAttribute.call(self, 'src', resolved);
@@ -117,7 +157,7 @@ export function initializeGlobalAttachmentIntercepts() {
     const anchor = (e.target as HTMLElement).closest('a[download]');
     if (anchor) {
       const href = anchor.getAttribute('href');
-      if (href && href.startsWith('data:') && href.includes(';base64,IDB_')) {
+      if (href && isPointerUrl(href)) {
         e.preventDefault();
         e.stopPropagation();
         const filename = anchor.getAttribute('download') || 'download';
