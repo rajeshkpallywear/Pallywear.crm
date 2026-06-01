@@ -208,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Sync registered users list
   useEffect(() => {
-    if (!user || (user.role !== 'admin' && user.role !== 'staff' && user.role !== 'telecaller' && user.role !== UserRole.TELECALLER)) {
+    if (!user || !user.role) {
       setRegisteredUsers([]);
       return;
     }

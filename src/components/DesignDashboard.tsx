@@ -948,6 +948,75 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                     </div>
                   </div>
 
+                  {/* Order Management Chat Panel */}
+                  {activeChannel === 'order_management' && (
+                    <div className="bg-purple-900 text-white rounded-2xl border border-purple-950 p-5 flex flex-col h-[320px] shadow-lg">
+                      <div className="flex items-center justify-between border-b border-purple-800 pb-3 mb-3">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare size={16} className="text-purple-300 animate-pulse" />
+                          <span className="text-xs font-black uppercase tracking-wider text-purple-100">Order Management Chat</span>
+                        </div>
+                        <span className="text-[9px] bg-purple-800 text-purple-200 px-2 py-0.5 rounded-full font-bold">Active Thread</span>
+                      </div>
+                      
+                      {/* Chat Messages */}
+                      <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 mb-3 custom-scrollbar text-left">
+                        {omMessages.length === 0 ? (
+                          <div className="h-full flex flex-col items-center justify-center text-center text-purple-300 py-6 opacity-60">
+                            <MessageSquare className="mx-auto mb-2" size={24} />
+                            <p className="text-[10px] font-black uppercase tracking-widest">No messages yet</p>
+                            <p className="text-[10px] max-w-xs mt-1">Send a message to Order Management below.</p>
+                          </div>
+                        ) : (
+                          omMessages.map((msg, i) => {
+                            const isDesigner = msg.senderRole === 'designer';
+                            return (
+                              <div key={msg.id || i} className={cn(
+                                "flex flex-col max-w-[85%] rounded-2xl p-3 shadow-sm",
+                                isDesigner 
+                                  ? "bg-white text-gray-800 ml-auto rounded-tr-none" 
+                                  : "bg-purple-800 text-white mr-auto rounded-tl-none border border-purple-750"
+                              )}>
+                                <div className="flex items-center justify-between gap-4 mb-1">
+                                  <span className={cn("text-[9px] font-black uppercase tracking-wider", isDesigner ? "text-purple-700" : "text-purple-300")}>
+                                    {msg.sender}
+                                  </span>
+                                  <span className="text-[8px] opacity-60 font-mono">
+                                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <p className="text-xs font-medium leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Chat Input */}
+                      <div className="border-t border-purple-800 pt-3 flex gap-2">
+                        <input
+                          type="text"
+                          className="flex-1 px-3 py-2 bg-purple-950 border border-purple-850 rounded-xl focus:ring-1 focus:ring-purple-300 outline-none text-xs text-white placeholder-purple-400 font-medium"
+                          placeholder="Type message to Order Management..."
+                          value={omNewMessage}
+                          onChange={e => setOmNewMessage(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSendOmChatMessage();
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={handleSendOmChatMessage}
+                          disabled={!omNewMessage.trim()}
+                          className="px-3 bg-purple-650 hover:bg-purple-600 active:scale-95 transition-all text-white rounded-xl flex items-center justify-center border-none cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          <Send size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

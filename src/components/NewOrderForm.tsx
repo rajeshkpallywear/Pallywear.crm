@@ -26,6 +26,9 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
     sizeBreakdown: initialData?.sizeBreakdown || [] as any[],
     totalAmount: initialData?.financials?.totalAmount || 0,
     advancePay: initialData?.financials?.advancePay || 0,
+    gstAmount: initialData?.financials?.gstAmount || 0,
+    discountAmount: initialData?.financials?.discountAmount || 0,
+    shippingCharges: initialData?.financials?.shippingCharges || 0,
     isUrgent: initialData?.isUrgent || false
   });
 
@@ -42,6 +45,9 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
         sizeBreakdown: initialData.sizeBreakdown || [] as any[],
         totalAmount: initialData.financials?.totalAmount || 0,
         advancePay: initialData.financials?.advancePay || 0,
+        gstAmount: initialData.financials?.gstAmount || 0,
+        discountAmount: initialData.financials?.discountAmount || 0,
+        shippingCharges: initialData.financials?.shippingCharges || 0,
         isUrgent: initialData.isUrgent || false
       });
     }
@@ -144,6 +150,9 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
       sizeBreakdown: [],
       totalAmount: 0,
       advancePay: 0,
+      gstAmount: 0,
+      discountAmount: 0,
+      shippingCharges: 0,
       isUrgent: false
     });
   };
@@ -174,7 +183,10 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
       financials: {
         totalAmount: formData.totalAmount,
         advancePay: formData.advancePay,
-        balanceAmount: formData.totalAmount - formData.advancePay
+        gstAmount: formData.gstAmount,
+        discountAmount: formData.discountAmount,
+        shippingCharges: formData.shippingCharges,
+        balanceAmount: (formData.totalAmount + (formData.gstAmount || 0) + (formData.shippingCharges || 0)) - (formData.discountAmount || 0) - formData.advancePay
       },
       staffImages: formData.imageAttachments,
       staffPdfs: formData.pdfAttachments,
@@ -205,7 +217,7 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
     }
   };
 
-  const computedBalance = formData.totalAmount - formData.advancePay;
+  const computedBalance = (formData.totalAmount + (formData.gstAmount || 0) + (formData.shippingCharges || 0)) - (formData.discountAmount || 0) - formData.advancePay;
 
   return (
     <div className="max-w-4xl mx-auto bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 font-sans">
@@ -513,7 +525,7 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
 
           <div className="md:col-span-8 grid grid-cols-3 gap-4 font-sans">
             <div className="space-y-1">
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Total Charge amount</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Total Item Amount</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
                 <input
@@ -527,7 +539,49 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
             </div>
 
             <div className="space-y-1">
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Advance advancePay</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">GST Amount</label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-2.5 text-sm font-black focus:ring-2 focus:ring-slate-900 focus:bg-white outline-none"
+                  value={formData.gstAmount}
+                  onChange={e => setFormData(prev => ({ ...prev, gstAmount: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Discount Amount</label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-2.5 text-sm font-black focus:ring-2 focus:ring-slate-900 focus:bg-white outline-none"
+                  value={formData.discountAmount}
+                  onChange={e => setFormData(prev => ({ ...prev, discountAmount: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Shipping Charges</label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-2.5 text-sm font-black focus:ring-2 focus:ring-slate-900 focus:bg-white outline-none"
+                  value={formData.shippingCharges}
+                  onChange={e => setFormData(prev => ({ ...prev, shippingCharges: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Advance Paid</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
                 <input

@@ -19,7 +19,8 @@ interface OrderDetailModalProps {
 
 export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpdateOrder, isAdmin, onReorder }: OrderDetailModalProps) {
   const { user } = useAuth();
-  const showAmountDetails = ['admin', 'accounts', 'order_management', 'delivery', UserRole.ADMIN, UserRole.ACCOUNTS, UserRole.ORDER_MANAGEMENT, UserRole.DELIVERY].includes(user?.role || '');
+  const showAmountDetails = ['admin', 'accounts', 'order_management', 'delivery', UserRole.ADMIN, UserRole.ACCOUNTS, UserRole.ORDER_MANAGEMENT, UserRole.DELIVERY].includes(user?.role || '') || 
+    (user && (order.createdBy === user.id || user.role === 'user' || user.role === 'marketing' || user.role === UserRole.MARKETING || user.role === UserRole.TELECALLER));
 
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -108,7 +109,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
       financials: {
         ...prev.financials,
         totalAmount: newTotal,
-        balanceAmount: newTotal - prev.financials.advancePay
+        balanceAmount: (newTotal + (prev.financials.gstAmount || 0) + (prev.financials.shippingCharges || 0)) - (prev.financials.discountAmount || 0) - prev.financials.advancePay
       }
     }));
   };
@@ -125,7 +126,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
       financials: {
         ...prev.financials,
         totalAmount: newTotal,
-        balanceAmount: newTotal - prev.financials.advancePay
+        balanceAmount: (newTotal + (prev.financials.gstAmount || 0) + (prev.financials.shippingCharges || 0)) - (prev.financials.discountAmount || 0) - prev.financials.advancePay
       }
     }));
   };
@@ -143,7 +144,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
       financials: {
         ...prev.financials,
         totalAmount: newTotal,
-        balanceAmount: newTotal - prev.financials.advancePay
+        balanceAmount: (newTotal + (prev.financials.gstAmount || 0) + (prev.financials.shippingCharges || 0)) - (prev.financials.discountAmount || 0) - prev.financials.advancePay
       }
     }));
   };
@@ -579,14 +580,94 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                       {isEditing ? (
                         <div className="space-y-2">
                           <div>
-                            <label className="text-[8px] font-black text-gray-400 uppercase">Grand Total</label>
+                            <label className="text-[8px] font-black text-gray-400 uppercase">Total Item Amount</label>
                             <input
                               type="number"
-                              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-black text-lg"
+                              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-black text-sm"
                               value={editedOrder.financials.totalAmount}
                               onChange={e => {
-                                const total = parseFloat(e.target.value) || 0;
-                                setEditedOrder({ ...editedOrder, financials: { ...editedOrder.financials, totalAmount: total, balanceAmount: total - editedOrder.financials.advancePay } });
+                                const val = parseFloat(e.target.value) || 0;
+                                const gst = editedOrder.financials.gstAmount || 0;
+                                const discount = editedOrder.financials.discountAmount || 0;
+                                const shipping = editedOrder.financials.shippingCharges || 0;
+                                const adv = editedOrder.financials.advancePay || 0;
+                                setEditedOrder({
+                                  ...editedOrder,
+                                  financials: {
+                                    ...editedOrder.financials,
+                                    totalAmount: val,
+                                    balanceAmount: (val + gst + shipping) - discount - adv
+                                  }
+                                });
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[8px] font-black text-gray-400 uppercase">GST Amount</label>
+                            <input
+                              type="number"
+                              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-bold text-sm text-gray-700"
+                              value={editedOrder.financials.gstAmount || 0}
+                              onChange={e => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const total = editedOrder.financials.totalAmount || 0;
+                                const discount = editedOrder.financials.discountAmount || 0;
+                                const shipping = editedOrder.financials.shippingCharges || 0;
+                                const adv = editedOrder.financials.advancePay || 0;
+                                setEditedOrder({
+                                  ...editedOrder,
+                                  financials: {
+                                    ...editedOrder.financials,
+                                    gstAmount: val,
+                                    balanceAmount: (total + val + shipping) - discount - adv
+                                  }
+                                });
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[8px] font-black text-gray-400 uppercase">Discount Amount</label>
+                            <input
+                              type="number"
+                              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-bold text-sm text-red-650"
+                              value={editedOrder.financials.discountAmount || 0}
+                              onChange={e => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const total = editedOrder.financials.totalAmount || 0;
+                                const gst = editedOrder.financials.gstAmount || 0;
+                                const shipping = editedOrder.financials.shippingCharges || 0;
+                                const adv = editedOrder.financials.advancePay || 0;
+                                setEditedOrder({
+                                  ...editedOrder,
+                                  financials: {
+                                    ...editedOrder.financials,
+                                    discountAmount: val,
+                                    balanceAmount: (total + gst + shipping) - val - adv
+                                  }
+                                });
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[8px] font-black text-gray-400 uppercase">Shipping Charges</label>
+                            <input
+                              type="number"
+                              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-bold text-sm text-gray-700"
+                              value={editedOrder.financials.shippingCharges || 0}
+                              onChange={e => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const total = editedOrder.financials.totalAmount || 0;
+                                const gst = editedOrder.financials.gstAmount || 0;
+                                const discount = editedOrder.financials.discountAmount || 0;
+                                const adv = editedOrder.financials.advancePay || 0;
+                                setEditedOrder({
+                                  ...editedOrder,
+                                  financials: {
+                                    ...editedOrder.financials,
+                                    shippingCharges: val,
+                                    balanceAmount: (total + gst + val) - discount - adv
+                                  }
+                                });
                               }}
                             />
                           </div>
@@ -597,25 +678,61 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                               className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl font-bold text-sm text-green-600"
                               value={editedOrder.financials.advancePay}
                               onChange={e => {
-                                const adv = parseFloat(e.target.value) || 0;
-                                setEditedOrder({ ...editedOrder, financials: { ...editedOrder.financials, advancePay: adv, balanceAmount: editedOrder.financials.totalAmount - adv } });
+                                const val = parseFloat(e.target.value) || 0;
+                                const total = editedOrder.financials.totalAmount || 0;
+                                const gst = editedOrder.financials.gstAmount || 0;
+                                const discount = editedOrder.financials.discountAmount || 0;
+                                const shipping = editedOrder.financials.shippingCharges || 0;
+                                setEditedOrder({
+                                  ...editedOrder,
+                                  financials: {
+                                    ...editedOrder.financials,
+                                    advancePay: val,
+                                    balanceAmount: (total + gst + shipping) - discount - val
+                                  }
+                                });
                               }}
                             />
                           </div>
                         </div>
                       ) : (
                         <>
-                          <div className="flex justify-between items-end">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase">Grand Total</span>
-                            <span className="text-2xl font-black text-gray-900">₹{(order.financials?.totalAmount || 0).toLocaleString()}</span>
+                          <div className="space-y-1.5 border-b border-brand-primary/10 pb-2">
+                            <div className="flex justify-between items-end text-xs">
+                              <span className="font-bold text-gray-500 uppercase">Total Items</span>
+                              <span className="font-black text-gray-800">₹{(order.financials?.totalAmount || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-end text-xs">
+                              <span className="font-bold text-gray-500 uppercase">GST Amount</span>
+                              <span className="font-black text-gray-800">₹{(order.financials?.gstAmount || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-end text-xs">
+                              <span className="font-bold text-gray-500 uppercase">Shipping Charges</span>
+                              <span className="font-black text-gray-800">₹{(order.financials?.shippingCharges || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-end text-xs">
+                              <span className="font-bold text-red-500 uppercase">Discount</span>
+                              <span className="font-black text-red-600">-₹{(order.financials?.discountAmount || 0).toLocaleString()}</span>
+                            </div>
                           </div>
-                          <div className="space-y-1">
+                          <div className="flex justify-between items-end pt-1">
+                            <span className="text-[10px] font-bold text-gray-700 uppercase">Grand Total</span>
+                            <span className="text-xl font-black text-gray-900">
+                              ₹{(
+                                (order.financials?.totalAmount || 0) + 
+                                (order.financials?.gstAmount || 0) + 
+                                (order.financials?.shippingCharges || 0) - 
+                                (order.financials?.discountAmount || 0)
+                              ).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="space-y-1 pt-1.5 border-t border-brand-primary/10">
                             <div className="flex justify-between text-xs">
                               <span className="font-bold text-green-600">Paid Amount</span>
                               <span className="font-black text-gray-900">₹{(order.financials?.advancePay || 0).toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-xs">
-                              <span className="font-bold text-red-600">Pending Pay</span>
+                              <span className="font-bold text-red-650">Pending Pay</span>
                               <span className="font-black text-gray-900">₹{(order.financials?.balanceAmount || 0).toLocaleString()}</span>
                             </div>
                           </div>

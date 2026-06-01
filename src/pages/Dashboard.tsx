@@ -209,7 +209,7 @@ export default function Dashboard() {
     }
   };
   const [graphPeriod, setGraphPeriod] = React.useState<'today' | 'week' | 'month'>('week');
-  const [selectedOrderCategory, setSelectedOrderCategory] = React.useState<'all' | 'recent' | 'create_order' | 'hold' | 'process' | 'completed' | null>('recent');
+  const [selectedOrderCategory, setSelectedOrderCategory] = React.useState<'all' | 'recent' | 'create_order' | 'hold' | 'process' | 'completed' | null>('all');
   const [isMobileOpen, setIsMobileOpen] = React.useState(false);
   const [isInboxOpen, setIsInboxOpen] = React.useState(false);
   const [inboxSelectedId, setInboxSelectedId] = React.useState<string | null>(null);
@@ -530,6 +530,7 @@ export default function Dashboard() {
         title: 'Design Desk',
         items: [
           { id: 'design_staff_comm', label: 'Staff Conversation', icon: MessageSquare },
+          { id: 'design_om_comm', label: 'Order Mgmt Chat', icon: MessageSquare },
           { id: 'calendar', label: 'Intake Calendar', icon: Calendar },
           { id: 'analytics', label: 'Performance Graph', icon: BarChart3 },
         ]
@@ -820,16 +821,16 @@ export default function Dashboard() {
                   <div className="flex gap-4 mb-6">
                     {([
                       {
-                        key: 'recent' as const,
-                        label: 'Order Management',
-                        title: 'Order Management Board',
-                        count: recentOrders.length,
+                        key: 'all' as const,
+                        label: 'Total Orders',
+                        title: 'Total Orders',
+                        count: myOrders.length,
                         icon: ShoppingBag,
                         activeBg: 'bg-brand-primary text-white border-brand-primary shadow-md scale-105',
                         hoverBg: 'hover:border-brand-primary/50',
                         badgeActive: 'bg-white text-brand-primary border-white',
                         badgeNormal: 'bg-brand-primary text-white border-brand-primary',
-                        navTab: 'order_mgmt_board',
+                        navTab: null,
                       },
                       {
                         key: 'hold' as const,
@@ -845,27 +846,27 @@ export default function Dashboard() {
                       },
                       {
                         key: 'process' as const,
-                        label: 'Production',
-                        title: 'Production Board',
+                        label: 'Process Orders',
+                        title: 'Process Orders',
                         count: processOrders.length,
                         icon: RefreshCw,
                         activeBg: 'bg-blue-500 text-white border-blue-500 shadow-md scale-105',
                         hoverBg: 'hover:border-blue-400',
                         badgeActive: 'bg-white text-blue-500 border-white',
                         badgeNormal: 'bg-blue-500 text-white border-blue-500',
-                        navTab: 'production_board',
+                        navTab: null,
                       },
                       {
                         key: 'completed' as const,
-                        label: 'Delivery',
-                        title: 'Delivery Board',
+                        label: 'Completed Orders',
+                        title: 'Completed Orders',
                         count: completedOrders.length,
                         icon: CheckCircle2,
                         activeBg: 'bg-emerald-500 text-white border-emerald-500 shadow-md scale-105',
                         hoverBg: 'hover:border-emerald-400',
                         badgeActive: 'bg-white text-emerald-500 border-white',
                         badgeNormal: 'bg-emerald-500 text-white border-emerald-500',
-                        navTab: 'delivery_board',
+                        navTab: null,
                       },
                     ]).map(cat => {
                       const Icon = cat.icon;
@@ -1680,7 +1681,7 @@ export default function Dashboard() {
             <LeadAssignment />
           ) : activeTab === 'digitizer_comm' ? (
             <DigitizerCommunication orders={orders} onUpdateOrder={handleUpdateOrder} />
-          ) : activeTab === 'designer' || user?.role === UserRole.DESIGNER || user?.role === 'designer' ? (
+          ) : activeTab === 'designer' || activeTab === 'design_staff_comm' || activeTab === 'design_om_comm' || user?.role === UserRole.DESIGNER || user?.role === 'designer' ? (
             <DesignDashboard
               orders={orders}
               onUpdateOrder={handleUpdateOrder}

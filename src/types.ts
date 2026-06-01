@@ -117,6 +117,9 @@ export interface Financials {
   totalAmount: number;
   advancePay: number;
   balanceAmount: number;
+  gstAmount?: number;
+  discountAmount?: number;
+  shippingCharges?: number;
 }
 
 export interface Order {

@@ -165,6 +165,7 @@ export default function Register() {
               <option value={UserRole.ACCOUNTS}>Accounts</option>
               <option value={UserRole.ORDER_MANAGEMENT}>Order Management</option>
               <option value={UserRole.PRODUCTION}>Production (Factory)</option>
+              <option value={UserRole.DELIVERY}>Delivery</option>
               <option value={UserRole.DIGITIZER}>Digitizing & Embroidery</option>
               <option value={UserRole.ADMIN}>Administrator</option>
             </select>

@@ -37,20 +37,7 @@ export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accep
       try {
         let fileToProcess: File | Blob = file;
 
-        // Compress images
-        if (file.type.startsWith('image/')) {
-          const options = {
-            maxSizeMB: 0.1, // Target 100KB per image to allow multiple images across stages
-            maxWidthOrHeight: 1280,
-            useWebWorker: true,
-          };
-          try {
-            fileToProcess = await imageCompression(file, options);
-          } catch (error) {
-            console.error('Compression failed:', error);
-            // Fallback to original file
-          }
-        }
+
 
         const reader = new FileReader();
         const data = await new Promise<string>((resolve) => {
