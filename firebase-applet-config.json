@@ -1,10 +1,9 @@
 {
-  "projectId": "gen-lang-client-0989049050",
-  "appId": "1:554283823295:web:e6ffd6fefebee1d0de560a",
-  "apiKey": "AIzaSyDNS-geJY9jzu257FpdWPzpUSuUhWZUIbU",
-  "authDomain": "gen-lang-client-0989049050.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-48379ada-a365-4133-aad9-547a1b744b6f",
-  "storageBucket": "gen-lang-client-0989049050.firebasestorage.app",
-  "messagingSenderId": "554283823295",
-  "measurementId": ""
+  "apiKey": "AIzaSyCO12S_Jfh6JtF9p6IGnvwrxQt4IaMySf0",
+  "authDomain": "pallywear-crm.firebaseapp.com",
+  "projectId": "pallywear-crm",
+  "storageBucket": "pallywear-crm.firebasestorage.app",
+  "messagingSenderId": "148459530219",
+  "appId": "1:148459530219:web:ae90e44c4c0a75c2d35bae",
+  "measurementId": "G-43Q7EQSLCK"
 }

@@ -125,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [registeredUsers, setRegisteredUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [adminOnlyRegistration, setAdminOnlyRegistration] = useState(true);
+  const [adminOnlyRegistration, setAdminOnlyRegistration] = useState(false);
 
   // Validate Connection to Firestore
   useEffect(() => {
@@ -314,7 +314,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Login error:', error.code, error.message);
       return {
         success: false,
-        message: 'Wrong email or password.'
+        message: error.message || 'Wrong email or password.'
       };
     }
   };

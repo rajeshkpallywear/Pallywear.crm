@@ -17,7 +17,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email in ['rajeshkpallywear@gmail.com', 'ceo@pallywear.com', 'stalingm.mano@gmail.com'] ||
+        request.auth.token.email in ['rajeshkpallywear@gmail.com', 'ceo@pallywear.com', 'daniel.smpallywear@gmail.com'] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
@@ -40,7 +40,7 @@ service cloud.firestore {
         return data.keys().hasAll(['id', 'email', 'role', 'name', 'createdAt']) &&
                data.id is string &&
                data.email is string &&
-               data.role in ['admin', 'staff', 'accounts', 'order_management', 'production', 'delivery', 'marketing', 'user', 'designer', 'digitizer', 'telecaller'] &&
+               data.role in ['admin', 'staff', 'accounts', 'order_management', 'production', 'delivery', 'marketing', 'user', 'designer', 'digitizer'] &&
                data.name is string &&
                data.createdAt is string;
       }
@@ -48,14 +48,14 @@ service cloud.firestore {
       function isAdminRoleEligible(email) {
         return email == 'ceo@pallywear.com' || 
                email == 'rajeshkpallywear@gmail.com' || 
-               email == 'stalingm.mano@gmail.com' || 
+               email == 'daniel.smpallywear@gmail.com' ||
                email.matches('(?i)^admin.*') || 
                email.matches('(?i)^ceo.*');
       }
 
       function isStaff() {
         return isSignedIn() && (
-          hasUserRole(['staff', 'admin', 'designer', 'accounts', 'order_management', 'production', 'delivery', 'marketing', 'digitizer', 'telecaller']) ||
+          hasUserRole(['staff', 'admin', 'designer', 'accounts', 'order_management', 'production', 'delivery', 'marketing', 'digitizer']) ||
           isAdmin() ||
           request.auth.token.email.matches('(?i)^staff.*')
         );
@@ -71,8 +71,7 @@ service cloud.firestore {
                       (
                         // Allow own field updates except role usually
                         (request.resource.data.role == resource.data.role && request.resource.data.email == resource.data.email) ||
-                        isAdmin() ||
-                        (isAdminRoleEligible(request.resource.data.email) && request.resource.data.role == 'admin')
+                        isAdmin()
                       );
       
       allow delete: if isAdmin();
@@ -96,20 +95,15 @@ service cloud.firestore {
         return isSignedIn() && (
           resource.data.createdBy == request.auth.uid || 
           isAdmin() || 
-          hasUserRole(['admin', 'marketing', 'user', 'staff', 'accounts', 'order_management', 'digitizer', 'telecaller'])
+          hasUserRole(['admin', 'marketing', 'user', 'staff', 'accounts', 'order_management', 'digitizer'])
         );
       }
 
       allow get, list: if canReadLeads();
       
-      // Telecallers can create leads assigned to any user (round-robin)
-      // Regular users create only their own leads
-      allow create: if isSignedIn() && isValidId(leadId) && isValidLead(request.resource.data) && (
-        hasUserRole(['telecaller']) ||
-        request.resource.data.createdBy == request.auth.uid
-      );
+      allow create: if isSignedIn() && isValidId(leadId) && (request.resource.data.createdBy == request.auth.uid) && isValidLead(request.resource.data);
       
-      allow update: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin() || hasUserRole(['marketing', 'admin', 'telecaller'])) && 
+      allow update: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin() || hasUserRole(['marketing', 'admin'])) && 
                       isValidLead(request.resource.data) &&
                       request.resource.data.createdBy == resource.data.createdBy;
                       
@@ -160,12 +154,7 @@ service cloud.firestore {
     // App Settings
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin() || hasUserRole(['admin', 'telecaller', 'staff', 'order_management']);
-    }
-
-    // Attachments Collection
-    match /attachments/{attachmentId} {
-      allow read, write: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // Inventory Collection
@@ -177,30 +166,35 @@ service cloud.firestore {
       );
     }
 
-    // Leaves Collection - Open access to support local mock and Firebase authentication operations
-    match /leaves/{leaveId} {
-      allow read, write: if true;
+    // Attachments Collection
+    match /attachments/{attachmentId} {
+      allow read, write: if isSignedIn();
     }
 
-    // Login Logs Collection - Open access to save user GPS and agent data upon login
+    // Leaves Collection
+    match /leaves/{leaveId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Login Logs Collection
     match /pallywear_login_logs/{logId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
     }
 
     // Advanced Chat Collections
     match /pallywear_adv_chats/{chatId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
     }
 
     match /pallywear_adv_invites/{inviteId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
     }
 
     match /pallywear_adv_messages/{messageId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
     }
 
-    // Call Logs Collection - Telecallers can read/write their own call logs
+    // Call Logs Collection
     match /call_logs/{logId} {
       allow read: if isSignedIn() && (
         isAdmin() ||

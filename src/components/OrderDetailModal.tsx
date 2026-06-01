@@ -7,6 +7,10 @@ import WorkflowVisualizer from './WorkflowVisualizer';
 import React, { useState, useEffect } from 'react';
 import imageCompression from 'browser-image-compression';
 import { downloadOrderPDF } from '../lib/pdfHelper';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase'; // ✅ FIXED: added missing db import
+import { saveFileToLocalDB } from '../lib/indexedDbHelper';
+import { isAttachmentImage, isAttachmentPdf } from '../lib/utils';
 import { CATEGORIES, JERSEY_MATERIALS, JERSEY_MODELS, SLEEVE_OPTIONS, SHIRT_MATERIALS, SHIRT_MODELS, SHIRT_COLOURS, PRINT_TYPES, HOODIE_MODELS, HOODIE_COLOURS, SWEATSHIRT_COLOURS, PANT_MATERIALS, PANT_COLOURS, TSHIRT_MATERIALS, TSHIRT_COLOURS_MAP, OVERSIZED_MATERIALS, OVERSIZED_COLOURS, CORPORATE_GIFT_OPTIONS, SIZE_OPTIONS } from '../constants';
 
 interface OrderDetailModalProps {
@@ -20,7 +24,7 @@ interface OrderDetailModalProps {
 
 export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpdateOrder, isAdmin, onReorder }: OrderDetailModalProps) {
   const { user } = useAuth();
-  const showAmountDetails = ['admin', 'accounts', 'order_management', 'delivery', UserRole.ADMIN, UserRole.ACCOUNTS, UserRole.ORDER_MANAGEMENT, UserRole.DELIVERY].includes(user?.role || '') || 
+  const showAmountDetails = ['admin', 'accounts', 'order_management', 'delivery', UserRole.ADMIN, UserRole.ACCOUNTS, UserRole.ORDER_MANAGEMENT, UserRole.DELIVERY].includes(user?.role || '') ||
     (user && (order.createdBy === user.id || user.role === 'user' || user.role === 'marketing' || user.role === UserRole.MARKETING || user.role === UserRole.TELECALLER));
 
   const [viewingImage, setViewingImage] = useState<string | null>(null);
@@ -169,8 +173,8 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0 || !onUpdateOrder) return;
-    
-    const files = Array.from(e.target.files);
+
+    const files: File[] = Array.from(e.target.files);
     try {
       const base64Promises = files.map(async (file: File) => {
         let fileToProcess: File | Blob = file;
@@ -194,10 +198,29 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
           reader.onerror = error => reject(error);
         });
       });
-      
+
       const base64Images = await Promise.all(base64Promises);
-      const updatedStaffImages = [...(order.staffImages || []), ...base64Images];
-      
+
+      const firestoreImages = await Promise.all(base64Images.map(async (base64, idx) => {
+        const attachmentId = `att_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`;
+        const file = files[idx];
+        try {
+          await setDoc(doc(db, 'attachments', attachmentId), {
+            id: attachmentId,
+            data: base64,
+            name: file.name,
+            createdAt: Date.now()
+          });
+          await saveFileToLocalDB(attachmentId, base64);
+          return `FIRESTORE_ATTACHMENT:image:${attachmentId}`;
+        } catch (uploadErr) {
+          console.error("Failed to upload staff image to Firestore attachments:", uploadErr);
+          return base64; // fallback
+        }
+      }));
+
+      const updatedStaffImages = [...(order.staffImages || []), ...firestoreImages];
+
       await onUpdateOrder(order.id, {
         staffImages: updatedStaffImages,
         updatedAt: Date.now()
@@ -339,9 +362,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                   id: `design-${i}`,
                   source: 'Art Studio Design',
                   url,
-                  type: url.startsWith('data:image/') || url.includes('.png') || url.includes('.jpg') || url.includes('.jpeg') 
-                    ? 'image' 
-                    : (url.startsWith('data:application/pdf') || url.includes('.pdf') ? 'pdf' : 'other'),
+                  type: isAttachmentImage(url) ? 'image' : (isAttachmentPdf(url) ? 'pdf' : 'other'),
                   color: 'bg-purple-100/60 border-purple-200 text-purple-700',
                   textColor: 'text-purple-700'
                 });
@@ -406,7 +427,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                   id: `accounts-${i}`,
                   source: 'Billing Receipt Docs',
                   url,
-                  type: url.startsWith('data:image/') || url.includes('.png') || url.includes('.jpg') || url.includes('.jpeg') ? 'image' : 'pdf',
+                  type: isAttachmentImage(url) ? 'image' : 'pdf',
                   color: 'bg-amber-100/60 border-amber-200 text-amber-700',
                   textColor: 'text-amber-700'
                 });
@@ -427,12 +448,12 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                     {onUpdateOrder && (
                       <label className="bg-brand-primary hover:bg-brand-primary/95 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1">
                         Upload Image
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          multiple 
-                          className="hidden" 
-                          onChange={handleImageUpload} 
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={handleImageUpload}
                         />
                       </label>
                     )}
@@ -734,9 +755,9 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                             <span className="text-[10px] font-bold text-gray-700 uppercase">Grand Total</span>
                             <span className="text-xl font-black text-gray-900">
                               ₹{(
-                                (order.financials?.totalAmount || 0) + 
-                                (order.financials?.gstAmount || 0) + 
-                                (order.financials?.shippingCharges || 0) - 
+                                (order.financials?.totalAmount || 0) +
+                                (order.financials?.gstAmount || 0) +
+                                (order.financials?.shippingCharges || 0) -
                                 (order.financials?.discountAmount || 0)
                               ).toLocaleString()}
                             </span>
@@ -1102,7 +1123,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                               onClick={() => setViewingImage(file)}
                               className="w-full h-full rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-purple-500"
                             >
-                              {file.startsWith('data:image/') ? <img src={file} className="w-full h-full object-cover rounded-xl" /> : <FileText size={24} />}
+                              {isAttachmentImage(file) ? <img src={file} className="w-full h-full object-cover rounded-xl" /> : <FileText size={24} />}
                             </div>
                             {onUpdateOrder && (
                               <button
@@ -1152,7 +1173,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                               onClick={() => setViewingImage(file)}
                               className="w-full h-full rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center cursor-pointer hover:shadow-md transition-all text-amber-500"
                             >
-                              {file.startsWith('data:image/') ? <img src={file} className="w-full h-full object-cover rounded-xl" /> : <FileText size={24} />}
+                              {isAttachmentImage(file) ? <img src={file} className="w-full h-full object-cover rounded-xl" /> : <FileText size={24} />}
                             </div>
                             {onUpdateOrder && (
                               <button
@@ -1273,7 +1294,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                             {confirmingTarget === 'design' ? (
                               <div className="bg-purple-50 border border-purple-300 p-4 rounded-xl space-y-3 text-left">
                                 <p className="text-xs font-black text-purple-900 uppercase tracking-wider text-center">Send Order to Designers</p>
-                                
+
                                 {order.notes && (
                                   <div className="bg-white border border-purple-105 rounded-lg p-2 max-h-32 overflow-y-auto">
                                     <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-1">Previous Notes</p>
@@ -1299,7 +1320,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                                       const timestamp = new Date().toLocaleString();
                                       const newNote = `[STAFF -> DESIGNER] ${timestamp}: ${textMsg || 'No notes specified.'}`;
                                       const updatedNotes = order.notes ? `${order.notes}\n\n${newNote}` : newNote;
-                                      
+
                                       setConfirmingTarget(null);
                                       setIsProcessingAction(true);
                                       try {

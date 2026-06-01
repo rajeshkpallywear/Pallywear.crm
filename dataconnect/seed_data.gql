@@ -1,0 +1,66 @@
+mutation CreateDemoData @transaction @auth(level: USER, insecureReason: "Seed data can be created by any logged-in user.") {
+  user1: user_insert(data: {
+    id: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    displayName: "Alice Wonderland",
+    email: "alice@example.com",
+    createdAt: "2024-01-01T10:00:00Z"
+  })
+  user2: user_insert(data: {
+    id: "b1c2d3e4-f5a6-0987-6543-210fedcba987",
+    displayName: "Bob TheBuilder",
+    email: "bob@example.com",
+    createdAt: "2024-01-01T10:05:00Z"
+  })
+  movie1: movie_insert(data: {
+    id: "c1d2e3f4-a5b6-7890-1234-567890abcdef",
+    title: "The Great Adventure",
+    year: 2023,
+    summary: "A thrilling journey through unknown lands.",
+    genres: ["Adventure", "Fantasy"],
+    runtimeMinutes: 120,
+    createdAt: "2024-01-05T11:00:00Z"
+  })
+  movie2: movie_insert(data: {
+    id: "d1e2f3g4-b5c6-0987-6543-210fedcba987",
+    title: "Code Red",
+    year: 2022,
+    summary: "A high-stakes tech thriller.",
+    genres: ["Thriller", "Action"],
+    runtimeMinutes: 95,
+    createdAt: "2024-01-06T12:00:00Z"
+  })
+  movieList1: movieList_insert(data: {
+    id: "e1f2g3h4-c5d6-7890-1234-567890abcdef",
+    userId: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    name: "Alice's Favorites",
+    isPublic: true,
+    description: "My top picks for a cozy night in.",
+    createdAt: "2024-01-10T13:00:00Z",
+    updatedAt: "2024-01-10T13:00:00Z"
+  })
+  movieListEntry1: movieListEntry_insert(data: {
+    movieListId: "e1f2g3h4-c5d6-7890-1234-567890abcdef",
+    movieId: "c1d2e3f4-a5b6-7890-1234-567890abcdef",
+    position: 1,
+    note: "Absolutely loved the special effects!"
+  })
+  watch1: watch_insert(data: {
+    id: "f1g2h3i4-d5e6-7890-1234-567890abcdef",
+    userId: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    movieId: "c1d2e3f4-a5b6-7890-1234-567890abcdef",
+    watchDate: "2024-01-11",
+    location: "Home Cinema",
+    createdAt: "2024-01-11T19:00:00Z"
+  })
+  review1: review_insert(data: {
+    id: "g1h2i3j4-e5f6-7890-1234-567890abcdef",
+    userId: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    movieId: "c1d2e3f4-a5b6-7890-1234-567890abcdef",
+    watchId: "f1g2h3i4-d5e6-7890-1234-567890abcdef",
+    rating: 5,
+    text: "A masterpiece of storytelling and visual effects. Highly recommended!",
+    isPublic: true,
+    createdAt: "2024-01-12T08:00:00Z",
+    updatedAt: "2024-01-12T08:00:00Z"
+  })
+}
