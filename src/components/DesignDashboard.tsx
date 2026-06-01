@@ -935,16 +935,16 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                     <div className="grid grid-cols-1 gap-4">
                       {/* Upload 1: Artwork Graphics */}
                       <div className="space-y-2 bg-white p-3.5 rounded-lg border border-purple-100">
-                        <p className="text-[9.5px] font-black text-gray-500 uppercase tracking-tight">1. Vector Tracing Output (PDF)</p>
+                        <p className="text-[9.5px] font-black text-gray-500 uppercase tracking-tight">1. Vector Tracing Output (PNG)</p>
                         <FileUpload
                           label=""
-                          accept="image/*,.pdf,.zip,.bmp,.tiff,.gif"
+                          accept="image/png,.png"
                           onFilesSelected={(files) => setNewDesignFiles(files)}
                         />
                         <div className="max-h-[80px] overflow-y-auto space-y-1 mt-2">
                           {designFiles.map((file, i) => (
                             <div key={i} className="flex justify-between items-center text-[10px] bg-slate-50 p-1.5 rounded border border-slate-200">
-                              <span className="truncate max-w-[120px] font-mono">Art_{i + 1}.pdf</span>
+                              <span className="truncate max-w-[120px] font-mono">Art_{i + 1}.png</span>
                               <button
                                 onClick={() => handleRemoveFile(i, 'design')}
                                 className="text-red-500 hover:text-red-700 bg-transparent border-none cursor-pointer"
