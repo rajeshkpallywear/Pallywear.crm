@@ -8,7 +8,8 @@ import { Upload, X, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { saveFileToLocalDB } from '../lib/indexedDbHelper';
 import imageCompression from 'browser-image-compression';
 import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, storage } from '../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface FileUploadProps {
   label: string;
@@ -17,7 +18,7 @@ interface FileUploadProps {
   accept?: string;
 }
 
-export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accept = "image/*,.pdf" }: FileUploadProps) {
+export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accept = "image/*,.pdf,.zip,.bmp,.tiff,.gif" }: FileUploadProps) {
   const [selectedFiles, setSelectedFiles] = useState<{ name: string, type: string, size: number, data: string }[]>([]);
   const [isCompressing, setIsCompressing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,38 +52,50 @@ export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accep
           }
         }
 
-        const reader = new FileReader();
-        const data = await new Promise<string>((resolve) => {
-          reader.onload = (event) => resolve(event.target?.result as string);
-          reader.readAsDataURL(fileToProcess);
-        });
-
-        let finalData = data;
-        let typePrefix = 'other';
-        if (file.type.startsWith('image/')) {
-          typePrefix = 'image';
-        } else if (file.type.includes('pdf')) {
-          typePrefix = 'pdf';
-        } else if (file.type.includes('zip')) {
-          typePrefix = 'zip';
-        }
-
+        let finalData = '';
         const attachmentId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
         try {
-          await setDoc(doc(db, 'attachments', attachmentId), {
-            id: attachmentId,
-            data: data,
-            name: file.name,
-            createdAt: Date.now()
+          // Attempt Firebase Storage Upload
+          const storageRef = ref(storage, `attachments/${attachmentId}_${file.name}`);
+          const uploadTask = await uploadBytes(storageRef, fileToProcess);
+          const downloadUrl = await getDownloadURL(uploadTask.ref);
+          finalData = downloadUrl;
+        } catch (storageErr) {
+          console.warn("Storage upload failed, falling back to Firestore attachments database:", storageErr);
+
+          // Convert to base64
+          const reader = new FileReader();
+          const data = await new Promise<string>((resolve) => {
+            reader.onload = (event) => resolve(event.target?.result as string);
+            reader.readAsDataURL(fileToProcess);
           });
-          await saveFileToLocalDB(attachmentId, data);
-          finalData = `FIRESTORE_ATTACHMENT:${typePrefix}:${attachmentId}`;
-        } catch (uploadErr) {
-          console.error("Failed to upload to Firestore attachments, fallback to IndexedDB:", uploadErr);
-          const key = `file_${file.name.replace(/[^a-zA-Z0-9]/g, '_')}_${fileToProcess.size}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-          await saveFileToLocalDB(key, data);
-          const mimeType = data.split(';base64,')[0];
-          finalData = `${mimeType};base64,IDB_${key}`;
+
+          let typePrefix = 'other';
+          if (file.type.startsWith('image/')) {
+            typePrefix = 'image';
+          } else if (file.type.includes('pdf')) {
+            typePrefix = 'pdf';
+          } else if (file.type.includes('zip')) {
+            typePrefix = 'zip';
+          }
+
+          try {
+            await setDoc(doc(db, 'attachments', attachmentId), {
+              id: attachmentId,
+              data: data,
+              name: file.name,
+              createdAt: Date.now()
+            });
+            await saveFileToLocalDB(attachmentId, data);
+            finalData = `FIRESTORE_ATTACHMENT:${typePrefix}:${attachmentId}`;
+          } catch (uploadErr) {
+            console.error("Failed to upload to Firestore attachments, fallback to IndexedDB:", uploadErr);
+            const key = `file_${file.name.replace(/[^a-zA-Z0-9]/g, '_')}_${fileToProcess.size}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            await saveFileToLocalDB(key, data);
+            const mimeType = data.split(';base64,')[0];
+            finalData = `${mimeType};base64,IDB_${key}`;
+          }
         }
 
         processedFiles.push({

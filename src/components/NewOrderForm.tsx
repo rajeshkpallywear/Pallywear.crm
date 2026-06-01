@@ -502,7 +502,7 @@ export default function NewOrderForm({ onCreateOrder, onSuccessRedirect, initial
             label="Original Draft reference (Max 3 files)"
             onFilesSelected={(files) => setFormData(prev => ({ ...prev, imageAttachments: files }))}
             maxFiles={3}
-            accept="image/*"
+            accept="image/*,.pdf,.zip,.bmp,.tiff,.gif"
           />
         </div>
 

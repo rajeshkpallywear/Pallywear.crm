@@ -938,7 +938,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                         <p className="text-[9.5px] font-black text-gray-500 uppercase tracking-tight">1. Vector Tracing Output (PDF)</p>
                         <FileUpload
                           label=""
-                          accept=".pdf,image/*"
+                          accept="image/*,.pdf,.zip,.bmp,.tiff,.gif"
                           onFilesSelected={(files) => setNewDesignFiles(files)}
                         />
                         <div className="max-h-[80px] overflow-y-auto space-y-1 mt-2">
@@ -1061,6 +1061,15 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
               >
                 <ArrowLeftIcon size={15} />
                 Return to Sales/Staff
+              </button>
+
+              <button
+                disabled={isProcessing || selectedOrder.status === OrderStatus.HOLD}
+                onClick={handleSendToOrderManagement}
+                className="px-6 py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-black uppercase text-xs tracking-wider transition-all scale-100 hover:scale-[1.02] border-none flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ml-auto"
+              >
+                <CheckCircle size={15} />
+                Send Design to Staff
               </button>
             </div>
           </motion.div>

@@ -8,7 +8,8 @@ import React, { useState, useEffect } from 'react';
 import imageCompression from 'browser-image-compression';
 import { downloadOrderPDF } from '../lib/pdfHelper';
 import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase'; // ✅ FIXED: added missing db import
+import { db, storage } from '../lib/firebase'; // ✅ FIXED: added missing db & storage import
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { saveFileToLocalDB } from '../lib/indexedDbHelper';
 import { isAttachmentImage, isAttachmentPdf } from '../lib/utils';
 import { CATEGORIES, JERSEY_MATERIALS, JERSEY_MODELS, SLEEVE_OPTIONS, SHIRT_MATERIALS, SHIRT_MODELS, SHIRT_COLOURS, PRINT_TYPES, HOODIE_MODELS, HOODIE_COLOURS, SWEATSHIRT_COLOURS, PANT_MATERIALS, PANT_COLOURS, TSHIRT_MATERIALS, TSHIRT_COLOURS_MAP, OVERSIZED_MATERIALS, OVERSIZED_COLOURS, CORPORATE_GIFT_OPTIONS, SIZE_OPTIONS } from '../constants';
@@ -176,7 +177,9 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
 
     const files: File[] = Array.from(e.target.files);
     try {
-      const base64Promises = files.map(async (file: File) => {
+      const firestoreImages = await Promise.all(files.map(async (file, idx) => {
+        const attachmentId = `att_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`;
+        
         let fileToProcess: File | Blob = file;
         if (file.type.startsWith('image/')) {
           try {
@@ -191,31 +194,36 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
           }
         }
 
-        return new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.readAsDataURL(fileToProcess);
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = error => reject(error);
-        });
-      });
-
-      const base64Images = await Promise.all(base64Promises);
-
-      const firestoreImages = await Promise.all(base64Images.map(async (base64, idx) => {
-        const attachmentId = `att_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`;
-        const file = files[idx];
         try {
-          await setDoc(doc(db, 'attachments', attachmentId), {
-            id: attachmentId,
-            data: base64,
-            name: file.name,
-            createdAt: Date.now()
+          // Attempt Firebase Storage Upload
+          const storageRef = ref(storage, `attachments/${attachmentId}_${file.name}`);
+          const uploadTask = await uploadBytes(storageRef, fileToProcess);
+          const downloadUrl = await getDownloadURL(uploadTask.ref);
+          return downloadUrl;
+        } catch (storageErr) {
+          console.warn("Storage upload failed, falling back to Firestore attachments database:", storageErr);
+
+          // Convert to base64
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(fileToProcess);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = err => reject(err);
           });
-          await saveFileToLocalDB(attachmentId, base64);
-          return `FIRESTORE_ATTACHMENT:image:${attachmentId}`;
-        } catch (uploadErr) {
-          console.error("Failed to upload staff image to Firestore attachments:", uploadErr);
-          return base64; // fallback
+
+          try {
+            await setDoc(doc(db, 'attachments', attachmentId), {
+              id: attachmentId,
+              data: base64,
+              name: file.name,
+              createdAt: Date.now()
+            });
+            await saveFileToLocalDB(attachmentId, base64);
+            return `FIRESTORE_ATTACHMENT:image:${attachmentId}`;
+          } catch (uploadErr) {
+            console.error("Failed to upload staff image to Firestore attachments:", uploadErr);
+            return base64; // fallback
+          }
         }
       }));
 
@@ -371,11 +379,13 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
 
             if (order.staffImages) {
               order.staffImages.forEach((url, i) => {
+                const isImage = isAttachmentImage(url);
+                const isPdf = isAttachmentPdf(url);
                 designFilesList.push({
                   id: `staff-img-${i}`,
                   source: 'Customer Intake Reference',
                   url,
-                  type: 'image',
+                  type: isImage ? 'image' : (isPdf ? 'pdf' : 'zip'),
                   color: 'bg-emerald-100/60 border-emerald-200 text-emerald-700',
                   textColor: 'text-emerald-700'
                 });
@@ -447,10 +457,10 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                   <div className="flex items-center gap-2 flex-wrap">
                     {onUpdateOrder && (
                       <label className="bg-brand-primary hover:bg-brand-primary/95 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1">
-                        Upload Image
+                        Upload File
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/*,application/pdf,application/zip,application/x-zip-compressed"
                           multiple
                           className="hidden"
                           onChange={handleImageUpload}
