@@ -5,6 +5,7 @@ import { Order, OrderStatus, UserRole } from '../types';
 import ImageViewer from './ImageViewer';
 import WorkflowVisualizer from './WorkflowVisualizer';
 import React, { useState, useEffect } from 'react';
+import imageCompression from 'browser-image-compression';
 import { downloadOrderPDF } from '../lib/pdfHelper';
 import { CATEGORIES, JERSEY_MATERIALS, JERSEY_MODELS, SLEEVE_OPTIONS, SHIRT_MATERIALS, SHIRT_MODELS, SHIRT_COLOURS, PRINT_TYPES, HOODIE_MODELS, HOODIE_COLOURS, SWEATSHIRT_COLOURS, PANT_MATERIALS, PANT_COLOURS, TSHIRT_MATERIALS, TSHIRT_COLOURS_MAP, OVERSIZED_MATERIALS, OVERSIZED_COLOURS, CORPORATE_GIFT_OPTIONS, SIZE_OPTIONS } from '../constants';
 
@@ -171,10 +172,24 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
     
     const files = Array.from(e.target.files);
     try {
-      const base64Promises = files.map((file: File) => {
+      const base64Promises = files.map(async (file: File) => {
+        let fileToProcess: File | Blob = file;
+        if (file.type.startsWith('image/')) {
+          try {
+            const options = {
+              maxSizeMB: 0.15,
+              maxWidthOrHeight: 1280,
+              useWebWorker: true
+            };
+            fileToProcess = await imageCompression(file, options);
+          } catch (compressErr) {
+            console.error('Failed to compress image:', compressErr);
+          }
+        }
+
         return new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
-          reader.readAsDataURL(file);
+          reader.readAsDataURL(fileToProcess);
           reader.onload = () => resolve(reader.result as string);
           reader.onerror = error => reject(error);
         });

@@ -36,8 +36,18 @@ export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accep
       }
       try {
         let fileToProcess: File | Blob = file;
-
-
+        if (file.type.startsWith('image/')) {
+          try {
+            const options = {
+              maxSizeMB: 0.15,
+              maxWidthOrHeight: 1280,
+              useWebWorker: true
+            };
+            fileToProcess = await imageCompression(file, options);
+          } catch (compressErr) {
+            console.error('Failed to compress image:', compressErr);
+          }
+        }
 
         const reader = new FileReader();
         const data = await new Promise<string>((resolve) => {
@@ -46,8 +56,8 @@ export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accep
         });
 
         let finalData = data;
-        // If file is larger than 100KB or is a zip file, store in IndexedDB
-        if (fileToProcess.size > 100 * 1024 || file.name.endsWith('.zip') || file.type.includes('zip')) {
+        // If file is larger than 600KB, store in IndexedDB as fallback
+        if (fileToProcess.size > 600 * 1024) {
           const key = `file_${file.name.replace(/[^a-zA-Z0-9]/g, '_')}_${fileToProcess.size}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
           try {
             await saveFileToLocalDB(key, data);
