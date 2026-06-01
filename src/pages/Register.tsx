@@ -17,16 +17,18 @@ export default function Register() {
   const [role, setRole] = useState<UserRole>(UserRole.TELECALLER);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const { register, googleLogin, logout, user } = useAuth();
+  const { register, googleLogin, logout, user, adminOnlyRegistration } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
-    } else if (user.role !== 'admin' && user.role !== UserRole.ADMIN) {
-      navigate('/dashboard');
+    if (adminOnlyRegistration) {
+      if (!user) {
+        navigate('/login');
+      } else if (user.role !== 'admin' && user.role !== UserRole.ADMIN) {
+        navigate('/dashboard');
+      }
     }
-  }, [user, navigate]);
+  }, [user, navigate, adminOnlyRegistration]);
 
   const handleGoogleLogin = async () => {
     setError('');
