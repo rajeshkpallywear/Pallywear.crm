@@ -15,8 +15,9 @@ import {
 import FileUpload from './FileUpload';
 import imageCompression from 'browser-image-compression';
 import ImageViewer from './ImageViewer';
-import { Order, OrderStatus, UserRole } from '../types';
+import { Order, OrderStatus, UserRole, Chat, ChatMessage, ChatInvite } from '../types';
 import { useAuth, User as AuthUser } from '../context/AuthContext';
+import { useLeads } from '../context/LeadContext';
 import { db } from '../lib/firebase';
 import {
   collection, doc, setDoc, updateDoc, deleteDoc, getDoc, onSnapshot, getDocs, query, where
@@ -34,50 +35,6 @@ export interface Conversation {
   createdAt: number;
 }
 import { cn, isAttachmentZip } from '../lib/utils';
-
-export interface Chat {
-  id: string;
-  type: 'direct' | 'group';
-  name: string; // Group name or recipient name
-  recipientEmail?: string; // Recipient email (for direct chats)
-  recipientRole?: string;
-  avatar?: string;
-  participants: string[]; // User IDs of participants
-  acceptedParticipants: string[]; // User IDs who accepted
-  createdAt: number;
-  updatedAt: number;
-  lastMessage?: string;
-  lastMessageTime?: number;
-  lastSenderName?: string;
-  unreadCount?: { [userId: string]: number };
-}
-
-export interface ChatMessage {
-  id: string;
-  chatId: string;
-  senderId: string;
-  senderName: string;
-  senderRole: string;
-  message: string;
-  imageAttachments?: string[];
-  pdfAttachments?: string[];
-  voiceNote?: string | null;
-  createdAt: number;
-  readBy: string[]; // List of user IDs who read the message
-}
-
-export interface ChatInvite {
-  id: string;
-  chatId: string;
-  senderId: string;
-  senderName: string;
-  senderEmail: string;
-  recipientEmail: string;
-  status: 'pending' | 'accepted' | 'declined';
-  chatType: 'direct' | 'group';
-  groupName?: string;
-  createdAt: number;
-}
 
 interface ConversationDashboardProps {
   isOpen: boolean;
@@ -194,92 +151,15 @@ export default function ConversationDashboard({
   const { registeredUsers } = useAuth();
   
   // Firestore Sync Database States
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [invites, setInvites] = useState<ChatInvite[]>([]);
-
-  // Local storage helpers for robust fallback
-  const saveChatLocally = (chat: Chat) => {
-    try {
-      const local = localStorage.getItem('pallywear_local_chats') || '[]';
-      let list = JSON.parse(local);
-      if (!Array.isArray(list)) list = [];
-      const filtered = list.filter((c: any) => c && c.id !== chat.id);
-      filtered.push(chat);
-      localStorage.setItem('pallywear_local_chats', JSON.stringify(filtered));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const saveInviteLocally = (invite: ChatInvite) => {
-    try {
-      const local = localStorage.getItem('pallywear_local_invites') || '[]';
-      let list = JSON.parse(local);
-      if (!Array.isArray(list)) list = [];
-      const filtered = list.filter((i: any) => i && i.id !== invite.id);
-      filtered.push(invite);
-      localStorage.setItem('pallywear_local_invites', JSON.stringify(filtered));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const saveMessageLocally = (msg: ChatMessage) => {
-    try {
-      const local = localStorage.getItem('pallywear_local_messages') || '[]';
-      let list = JSON.parse(local);
-      if (!Array.isArray(list)) list = [];
-      list.push(msg);
-      localStorage.setItem('pallywear_local_messages', JSON.stringify(list));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const refreshLocalData = () => {
-    try {
-      const localChats = localStorage.getItem('pallywear_local_chats') || '[]';
-      setChats(prev => {
-        try {
-          let localList = JSON.parse(localChats);
-          if (!Array.isArray(localList)) localList = [];
-          const prevList = prev || [];
-          const prevIds = new Set(prevList.map(c => c && c.id));
-          const uniqueLocal = localList.filter((c: any) => c && c.id && !prevIds.has(c.id));
-          return [...prevList, ...uniqueLocal];
-        } catch (e) { return prev || []; }
-      });
-
-      const localInvites = localStorage.getItem('pallywear_local_invites') || '[]';
-      setInvites(prev => {
-        try {
-          let localList = JSON.parse(localInvites);
-          if (!Array.isArray(localList)) localList = [];
-          const prevList = prev || [];
-          const prevIds = new Set(prevList.map(i => i && i.id));
-          const uniqueLocal = localList.filter((i: any) => i && i.id && !prevIds.has(i.id));
-          return [...prevList, ...uniqueLocal];
-        } catch (e) { return prev || []; }
-      });
-
-      const localMsgs = localStorage.getItem('pallywear_local_messages') || '[]';
-      setMessages(prev => {
-        try {
-          let localList = JSON.parse(localMsgs);
-          if (!Array.isArray(localList)) localList = [];
-          // Filter local messages for currently selected chat only to avoid mixing messages
-          const localForChat = selectedChatId ? localList.filter((m: any) => m && m.chatId === selectedChatId) : [];
-          const prevList = prev || [];
-          const prevIds = new Set(prevList.map(m => m && m.id));
-          const uniqueLocal = localForChat.filter((m: any) => m && m.id && !prevIds.has(m.id));
-          return [...prevList, ...uniqueLocal];
-        } catch (e) { return prev || []; }
-      });
-    } catch (error) {
-      console.error("Error refreshing local data:", error);
-    }
-  };
+  const {
+    chats,
+    messages,
+    invites,
+    sendChatInvite,
+    acceptChatInvite,
+    declineChatInvite,
+    sendChatMessage
+  } = useLeads();
 
   // UI Selection States
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -316,120 +196,6 @@ export default function ConversationDashboard({
   const currentUserEmail = currentUser?.email || '';
   const currentUserName = currentUser?.name || 'User';
 
-  // Firestore onSnapshot listeners (filtered by user context for security & performance)
-  useEffect(() => {
-    if (!isOpen || !currentUserId) return;
-
-    seedMockChatData(currentUserId, currentUserEmail);
-
-    // Query chats where current user is a participant
-    const qChats = query(
-      collection(db, 'pallywear_adv_chats'),
-      where('participants', 'array-contains', currentUserId)
-    );
-
-    const unsubChats = onSnapshot(qChats, (snapshot) => {
-      const list = snapshot.docs.map(doc => doc.data() as Chat);
-      const local = localStorage.getItem('pallywear_local_chats') || '[]';
-      let merged = [...list];
-      try {
-        const localList = JSON.parse(local) as Chat[];
-        const firestoreIds = new Set(list.map(c => c.id));
-        const uniqueLocal = localList.filter(c => !firestoreIds.has(c.id));
-        merged = [...merged, ...uniqueLocal];
-      } catch (e) {}
-      setChats(merged);
-    }, (error) => {
-      console.warn("Chats sync limited, falling back to local data:", error);
-      refreshLocalData();
-    });
-
-    // Query invites where user is sender or recipient (split due to Firestore limitations)
-    const invitesMap = new Map<string, ChatInvite>();
-    const updateInvitesState = () => {
-      const list = Array.from(invitesMap.values());
-      const local = localStorage.getItem('pallywear_local_invites') || '[]';
-      let merged = [...list];
-      try {
-        const localList = JSON.parse(local) as ChatInvite[];
-        const firestoreIds = new Set(list.map(i => i.id));
-        const uniqueLocal = localList.filter(i => !firestoreIds.has(i.id));
-        merged = [...merged, ...uniqueLocal];
-      } catch (e) {}
-      setInvites(merged);
-    };
-
-    const qReceived = query(
-      collection(db, 'pallywear_adv_invites'),
-      where('recipientEmail', '==', currentUserEmail.toLowerCase().trim())
-    );
-    const unsubReceived = onSnapshot(qReceived, (snapshot) => {
-      snapshot.docs.forEach(doc => invitesMap.set(doc.id, doc.data() as ChatInvite));
-      updateInvitesState();
-    }, (error) => {
-      console.warn("Received invites sync limited:", error);
-      refreshLocalData();
-    });
-
-    const qSent = query(
-      collection(db, 'pallywear_adv_invites'),
-      where('senderId', '==', currentUserId)
-    );
-    const unsubSent = onSnapshot(qSent, (snapshot) => {
-      snapshot.docs.forEach(doc => invitesMap.set(doc.id, doc.data() as ChatInvite));
-      updateInvitesState();
-    }, (error) => {
-      console.warn("Sent invites sync limited:", error);
-      refreshLocalData();
-    });
-
-    return () => {
-      unsubChats();
-      unsubReceived();
-      unsubSent();
-    };
-  }, [isOpen, currentUserId, currentUserEmail]);
-
-  // Synchronize messages for the selected chat only (huge performance optimization)
-  useEffect(() => {
-    if (!isOpen || !selectedChatId) {
-      setMessages([]);
-      return;
-    }
-
-    const qMessages = query(
-      collection(db, 'pallywear_adv_messages'),
-      where('chatId', '==', selectedChatId)
-    );
-
-    const unsubscribe = onSnapshot(qMessages, (snapshot) => {
-      const list = snapshot.docs.map(doc => doc.data() as ChatMessage);
-      const local = localStorage.getItem('pallywear_local_messages') || '[]';
-      let merged = [...list];
-      try {
-        const localList = JSON.parse(local) as ChatMessage[];
-        const localForChat = localList.filter(m => m.chatId === selectedChatId);
-        const firestoreIds = new Set(list.map(m => m.id));
-        const uniqueLocal = localForChat.filter(m => !firestoreIds.has(m.id));
-        merged = [...merged, ...uniqueLocal];
-      } catch (e) {}
-      setMessages(merged);
-    }, (error) => {
-      console.warn("Messages sync limited for chat:", selectedChatId, error);
-      // Fallback to local messages for this chat only
-      try {
-        const local = localStorage.getItem('pallywear_local_messages') || '[]';
-        const localList = JSON.parse(local) as ChatMessage[];
-        const localForChat = localList.filter(m => m.chatId === selectedChatId);
-        setMessages(localForChat);
-      } catch (e) {
-        setMessages([]);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [isOpen, selectedChatId]);
-
   // Read receipts and scroll to bottom
   useEffect(() => {
     if (selectedChatId) {
@@ -446,34 +212,26 @@ export default function ConversationDashboard({
     if (!chat) return;
 
     try {
-      const nextUnread = { ...(chat.unreadCount || {}) };
-      nextUnread[currentUserId] = 0;
-      const updatedChat = { ...chat, unreadCount: nextUnread };
-
       if (chat.unreadCount && chat.unreadCount[currentUserId] > 0) {
         try {
-          await updateDoc(doc(db, 'pallywear_adv_chats', chatId), {
+          await updateDoc(doc(db, 'orders', `chat_c_${chatId}`), {
             [`unreadCount.${currentUserId}`]: 0
           });
         } catch (e) {
-          console.warn("Failed to update chat unread count in Firestore, updating locally:", e);
-          saveChatLocally(updatedChat);
+          console.warn("Failed to update chat unread count in Firestore:", e);
         }
       }
 
       const unreadMsgs = messages.filter(m => m.chatId === chatId && !m.readBy.includes(currentUserId));
       for (const m of unreadMsgs) {
-        const updatedMsg = { ...m, readBy: [...m.readBy, currentUserId] };
         try {
-          await updateDoc(doc(db, 'pallywear_adv_messages', m.id), {
+          await updateDoc(doc(db, 'orders', `chat_m_${m.id}`), {
             readBy: [...m.readBy, currentUserId]
           });
         } catch (e) {
-          console.warn("Failed to update message readBy in Firestore, updating locally:", e);
-          saveMessageLocally(updatedMsg);
+          console.warn("Failed to update message readBy in Firestore:", e);
         }
       }
-      refreshLocalData();
     } catch (err) {
       console.error(err);
     }
@@ -539,6 +297,13 @@ export default function ConversationDashboard({
       const chatId = `chat_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
       const inviteId = `invite_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
+      const participantRoles: { [userId: string]: string } = {
+        [currentUserId]: currentUser?.role || 'user'
+      };
+      if (recipientUser) {
+        participantRoles[recipientUser.id] = recipientUser.role;
+      }
+
       const newChat: Chat = {
         id: chatId,
         type: 'direct',
@@ -553,7 +318,8 @@ export default function ConversationDashboard({
         lastMessage: 'Waiting for invitation acceptance...',
         lastMessageTime: Date.now(),
         lastSenderName: currentUserName,
-        unreadCount: {}
+        unreadCount: {},
+        participantRoles: participantRoles
       };
 
       const newInvite: ChatInvite = {
@@ -568,23 +334,10 @@ export default function ConversationDashboard({
         createdAt: Date.now()
       };
 
-      try {
-        await setDoc(doc(db, 'pallywear_adv_chats', chatId), newChat);
-      } catch (e) {
-        console.warn("Failed to save chat to Firestore, saving locally:", e);
-        saveChatLocally(newChat);
-      }
-
-      try {
-        await setDoc(doc(db, 'pallywear_adv_invites', inviteId), newInvite);
-      } catch (e) {
-        console.warn("Failed to save invite to Firestore, saving locally:", e);
-        saveInviteLocally(newInvite);
-      }
+      await sendChatInvite(newInvite, newChat, recipientUser?.role || 'user');
 
       setInviteEmail('');
       setShowInviteModal(false);
-      refreshLocalData();
       alert(`Invitation sent to ${targetEmail}! Conversation will unlock once they accept.`);
     } catch (err) {
       console.error("Failed to send invite error details:", err);
@@ -597,86 +350,19 @@ export default function ConversationDashboard({
   // Accept Invite
   const handleAcceptInvite = async (invite: ChatInvite) => {
     try {
-      try {
-        await updateDoc(doc(db, 'pallywear_adv_invites', invite.id), { status: 'accepted' });
-      } catch (e) {
-        console.warn("Failed to update invite in Firestore, updating locally:", e);
-        const local = localStorage.getItem('pallywear_local_invites') || '[]';
-        try {
-          const list = JSON.parse(local) as ChatInvite[];
-          const updated = list.map(i => i.id === invite.id ? { ...i, status: 'accepted' as const } : i);
-          localStorage.setItem('pallywear_local_invites', JSON.stringify(updated));
-        } catch (err) {}
+      const chat = chats.find(c => c.id === invite.chatId);
+      if (!chat) {
+        alert("Chat room not found.");
+        return;
       }
 
-      const chatRef = doc(db, 'pallywear_adv_chats', invite.chatId);
-      let chatData: Chat | null = null;
+      const creatorUser = registeredUsers.find(u => u.id === invite.senderId);
+      const creatorRole = creatorUser?.role || 'user';
 
-      try {
-        const chatSnap = await getDoc(chatRef);
-        if (chatSnap.exists()) {
-          chatData = chatSnap.data() as Chat;
-        }
-      } catch (e) {
-        console.warn("Failed to fetch chat from Firestore:", e);
-      }
-
-      if (!chatData) {
-        const local = localStorage.getItem('pallywear_local_chats') || '[]';
-        try {
-          const list = JSON.parse(local) as Chat[];
-          chatData = list.find(c => c.id === invite.chatId) || null;
-        } catch (err) {}
-      }
-
-      if (chatData) {
-        const currentParticipants = [...(chatData.participants || [])];
-        if (!currentParticipants.includes(currentUserId)) {
-          currentParticipants.push(currentUserId);
-        }
-        const updatedChat = {
-          ...chatData,
-          participants: currentParticipants,
-          acceptedParticipants: [...(chatData.acceptedParticipants || []), currentUserId],
-          lastMessage: `${currentUserName} accepted the invitation. Chat unlocked!`,
-          lastMessageTime: Date.now()
-        };
-
-        try {
-          await updateDoc(chatRef, {
-            participants: currentParticipants,
-            acceptedParticipants: [...(chatData.acceptedParticipants || []), currentUserId],
-            lastMessage: `${currentUserName} accepted the invitation. Chat unlocked!`,
-            lastMessageTime: Date.now()
-          });
-        } catch (e) {
-          console.warn("Failed to update chat in Firestore, updating locally:", e);
-          saveChatLocally(updatedChat);
-        }
-      }
-
-      const welcomeMsgId = `system_${Date.now()}`;
-      const welcomeMsg: ChatMessage = {
-        id: welcomeMsgId,
-        chatId: invite.chatId,
-        senderId: 'system',
-        senderName: 'System',
-        senderRole: 'system',
-        message: `${currentUserName} joined the conversation. You can now chat!`,
-        createdAt: Date.now(),
-        readBy: [currentUserId]
-      };
-      
-      try {
-        await setDoc(doc(db, 'pallywear_adv_messages', welcomeMsgId), welcomeMsg);
-      } catch (e) {
-        console.warn("Failed to save welcome message to Firestore, saving locally:", e);
-        saveMessageLocally(welcomeMsg);
-      }
+      await acceptChatInvite(invite, chat, currentUserId, currentUserName, creatorRole);
 
       setSelectedChatId(invite.chatId);
       setActiveTab('all');
-      refreshLocalData();
     } catch (e) {
       console.error(e);
       alert("Failed to accept invitation.");
@@ -686,26 +372,7 @@ export default function ConversationDashboard({
   // Decline Invite
   const handleDeclineInvite = async (invite: ChatInvite) => {
     try {
-      try {
-        await updateDoc(doc(db, 'pallywear_adv_invites', invite.id), { status: 'declined' });
-        await deleteDoc(doc(db, 'pallywear_adv_chats', invite.chatId));
-      } catch (e) {
-        console.warn("Failed to decline invite in Firestore, declining locally:", e);
-        const localInvites = localStorage.getItem('pallywear_local_invites') || '[]';
-        try {
-          const list = JSON.parse(localInvites) as ChatInvite[];
-          const updated = list.map(i => i.id === invite.id ? { ...i, status: 'declined' as const } : i);
-          localStorage.setItem('pallywear_local_invites', JSON.stringify(updated));
-        } catch (err) {}
-        
-        const localChats = localStorage.getItem('pallywear_local_chats') || '[]';
-        try {
-          const list = JSON.parse(localChats) as Chat[];
-          const filtered = list.filter(c => c.id !== invite.chatId);
-          localStorage.setItem('pallywear_local_chats', JSON.stringify(filtered));
-        } catch (err) {}
-      }
-      refreshLocalData();
+      await declineChatInvite(invite);
     } catch (e) {
       console.error(e);
     }
@@ -728,6 +395,30 @@ export default function ConversationDashboard({
       const groupParticipants = [currentUserId, ...selectedGroupParticipants];
       const groupAccepted = [currentUserId];
 
+      const participantRoles: { [userId: string]: string } = {
+        [currentUserId]: currentUser?.role || 'user'
+      };
+      selectedGroupParticipants.forEach(pId => {
+        const u = registeredUsers.find(ru => ru.id === pId);
+        if (u) participantRoles[pId] = u.role;
+      });
+
+      const newChat: Chat = {
+        id: chatId,
+        type: 'group',
+        name: groupName.trim(),
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName.trim())}&background=4D109E&color=fff`,
+        participants: groupParticipants,
+        acceptedParticipants: groupAccepted,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        lastMessage: `Group "${groupName.trim()}" created. Inviting participants...`,
+        lastMessageTime: Date.now(),
+        lastSenderName: currentUserName,
+        unreadCount: {},
+        participantRoles: participantRoles
+      };
+
       for (const email of emailsToInvite) {
         const inviteId = `invite_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
         const newInvite: ChatInvite = {
@@ -742,34 +433,20 @@ export default function ConversationDashboard({
           groupName: groupName.trim(),
           createdAt: Date.now()
         };
-        try {
-          await setDoc(doc(db, 'pallywear_adv_invites', inviteId), newInvite);
-        } catch (e) {
-          console.warn("Failed to save group invite to Firestore, saving locally:", e);
-          saveInviteLocally(newInvite);
-        }
+
+        const targetUser = registeredUsers.find(ru => ru.email?.toLowerCase().trim() === email);
+        const rRole = targetUser?.role || 'user';
+        await sendChatInvite(newInvite, newChat, rRole);
       }
 
-      const newChat: Chat = {
-        id: chatId,
-        type: 'group',
-        name: groupName.trim(),
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName.trim())}&background=4D109E&color=fff`,
-        participants: groupParticipants,
-        acceptedParticipants: groupAccepted,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        lastMessage: `Group "${groupName.trim()}" created. Inviting participants...`,
-        lastMessageTime: Date.now(),
-        lastSenderName: currentUserName,
-        unreadCount: {}
-      };
-
-      try {
-        await setDoc(doc(db, 'pallywear_adv_chats', chatId), newChat);
-      } catch (e) {
-        console.warn("Failed to save group chat to Firestore, saving locally:", e);
-        saveChatLocally(newChat);
+      if (emailsToInvite.length === 0) {
+        // If no email invites, just set the group chat doc directly
+        await setDoc(doc(db, 'orders', `chat_c_${chatId}`), {
+          ...newChat,
+          id: `chat_c_${chatId}`,
+          createdBy: currentUserId,
+          status: 'hold'
+        });
       }
 
       const welcomeMsgId = `system_${Date.now()}`;
@@ -784,12 +461,13 @@ export default function ConversationDashboard({
         readBy: [currentUserId]
       };
       
-      try {
-        await setDoc(doc(db, 'pallywear_adv_messages', welcomeMsgId), welcomeMsg);
-      } catch (e) {
-        console.warn("Failed to save group welcome message to Firestore, saving locally:", e);
-        saveMessageLocally(welcomeMsg);
-      }
+      const welcomeMsgDoc = {
+        ...welcomeMsg,
+        id: `chat_m_${welcomeMsgId}`,
+        createdBy: currentUserId,
+        status: 'hold'
+      };
+      await setDoc(doc(db, 'orders', `chat_m_${welcomeMsgId}`), welcomeMsgDoc);
 
       setGroupName('');
       setSelectedGroupParticipants([]);
@@ -797,7 +475,6 @@ export default function ConversationDashboard({
       setShowGroupModal(false);
       setSelectedChatId(chatId);
       setActiveTab('all');
-      refreshLocalData();
     } catch (err) {
       console.error(err);
       alert("Failed to create group.");
@@ -935,46 +612,24 @@ export default function ConversationDashboard({
     };
 
     try {
-      const nextUnread = { ...(activeChat.unreadCount || {}) };
-      activeChat.participants.forEach(pId => {
-        if (pId !== currentUserId) {
-          nextUnread[pId] = (nextUnread[pId] || 0) + 1;
+      let recipientRole = 'user';
+      if (activeChat.type === 'direct') {
+        const otherId = activeChat.participants.find(p => p !== currentUserId);
+        if (otherId) {
+          if (activeChat.participantRoles && activeChat.participantRoles[otherId]) {
+            recipientRole = activeChat.participantRoles[otherId];
+          } else {
+            const otherUser = registeredUsers.find(u => u.id === otherId);
+            recipientRole = otherUser?.role || activeChat.recipientRole || 'user';
+          }
         }
-      });
-
-      const updatedChat = {
-        ...activeChat,
-        lastMessage: trimmed || (images.length > 0 ? '📷 Image attachment' : '🎤 Voice note'),
-        lastMessageTime: Date.now(),
-        lastSenderName: currentUserName,
-        unreadCount: nextUnread,
-        updatedAt: Date.now()
-      };
-
-      try {
-        await updateDoc(doc(db, 'pallywear_adv_chats', selectedChatId), {
-          lastMessage: trimmed || (images.length > 0 ? '📷 Image attachment' : '🎤 Voice note'),
-          lastMessageTime: Date.now(),
-          lastSenderName: currentUserName,
-          unreadCount: nextUnread,
-          updatedAt: Date.now()
-        });
-      } catch (e) {
-        console.warn("Failed to update chat in Firestore, updating locally:", e);
-        saveChatLocally(updatedChat);
       }
 
-      try {
-        await setDoc(doc(db, 'pallywear_adv_messages', msgId), newMsg);
-      } catch (e) {
-        console.warn("Failed to save message to Firestore, saving locally:", e);
-        saveMessageLocally(newMsg);
-      }
+      await sendChatMessage(newMsg, activeChat, recipientRole);
 
       setMessageText('');
       setAttachments([]);
       setVoiceNoteBase64(null);
-      refreshLocalData();
     } catch (err) {
       console.error(err);
       alert("Failed to send message.");

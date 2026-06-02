@@ -14,7 +14,7 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Lead, Invoice, Order, InventoryMovement, UserRole } from '../types';
+import { Lead, Invoice, Order, InventoryMovement, UserRole, Chat, ChatMessage, ChatInvite } from '../types';
 import { useAuth } from './AuthContext';
 
 enum OperationType {
@@ -60,6 +60,9 @@ interface LeadContextType {
   invoices: Invoice[];
   orders: Order[];
   inventory: InventoryMovement[];
+  chats: Chat[];
+  messages: ChatMessage[];
+  invites: ChatInvite[];
   addLead: (lead: Omit<Lead, 'id'>) => Promise<void>;
   updateLead: (id: string, lead: Partial<Lead>) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
@@ -71,6 +74,10 @@ interface LeadContextType {
   deleteOrder: (id: string) => Promise<void>;
   addInventoryMovement: (movement: Omit<InventoryMovement, 'id' | 'createdAt'>) => Promise<void>;
   deleteInventoryMovement: (id: string) => Promise<void>;
+  sendChatInvite: (invite: ChatInvite, chat: Chat, recipientRole: string) => Promise<void>;
+  acceptChatInvite: (invite: ChatInvite, chat: Chat, currentUserId: string, currentUserName: string, creatorRole: string) => Promise<void>;
+  declineChatInvite: (invite: ChatInvite) => Promise<void>;
+  sendChatMessage: (msg: ChatMessage, chat: Chat, recipientRole: string) => Promise<void>;
 }
 
 const LeadContext = createContext<LeadContextType | undefined>(undefined);
@@ -102,6 +109,9 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [inventory, setInventory] = useState<InventoryMovement[]>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [invites, setInvites] = useState<ChatInvite[]>([]);
   const { user, registeredUsers } = useAuth();
 
   useEffect(() => {
@@ -203,11 +213,32 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         : query(ordersRef, where('createdBy', '==', user.id));
 
     const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
+      const rawDocs = snapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
-      })) as Order[];
-      setOrders(data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+      }));
+
+      const actualOrders: Order[] = [];
+      const dbChats: Chat[] = [];
+      const dbMessages: ChatMessage[] = [];
+      const dbInvites: ChatInvite[] = [];
+
+      rawDocs.forEach((docData: any) => {
+        if (docData.id.startsWith('chat_c_')) {
+          dbChats.push(docData as Chat);
+        } else if (docData.id.startsWith('chat_m_')) {
+          dbMessages.push(docData as ChatMessage);
+        } else if (docData.id.startsWith('chat_i_')) {
+          dbInvites.push(docData as ChatInvite);
+        } else {
+          actualOrders.push(docData as Order);
+        }
+      });
+
+      setOrders(actualOrders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+      setChats(dbChats.sort((a, b) => b.updatedAt - a.updatedAt));
+      setMessages(dbMessages.sort((a, b) => a.createdAt - b.createdAt));
+      setInvites(dbInvites.sort((a, b) => b.createdAt - a.createdAt));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'orders');
     });
@@ -415,13 +446,160 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const getTargetRoleStatus = (role: string): string => {
+    const r = role.toLowerCase().trim();
+    if (r === 'designer') return 'design';
+    if (r === 'production') return 'production';
+    if (r === 'delivery') return 'delivery';
+    if (r === 'accounts') return 'accounts';
+    if (r === 'order_management') return 'order_management';
+    if (r === 'digitizer') return 'design';
+    if (r === 'staff') return 'pending';
+    return 'pending';
+  };
+
+  const sendChatInvite = async (invite: ChatInvite, chat: Chat, recipientRole: string) => {
+    if (!user) return;
+    try {
+      const status = getTargetRoleStatus(recipientRole);
+      
+      const chatDoc = sanitizeForFirestore({
+        ...chat,
+        id: `chat_c_${chat.id}`,
+        createdBy: user.id,
+        status: status,
+      });
+
+      const inviteDoc = sanitizeForFirestore({
+        ...invite,
+        id: `chat_i_${invite.id}`,
+        createdBy: user.id,
+        status: status,
+      });
+
+      await setDoc(doc(db, 'orders', `chat_c_${chat.id}`), chatDoc);
+      await setDoc(doc(db, 'orders', `chat_i_${invite.id}`), inviteDoc);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `orders/chat_c_${chat.id}`);
+    }
+  };
+
+  const acceptChatInvite = async (
+    invite: ChatInvite,
+    chat: Chat,
+    currentUserId: string,
+    currentUserName: string,
+    creatorRole: string
+  ) => {
+    if (!user) return;
+    try {
+      await firestoreUpdateDoc(doc(db, 'orders', `chat_i_${invite.id}`), {
+        status: 'accepted',
+        updatedAt: Date.now()
+      });
+
+      const nextParticipants = [...(chat.participants || [])];
+      if (!nextParticipants.includes(currentUserId)) nextParticipants.push(currentUserId);
+      const nextAccepted = [...(chat.acceptedParticipants || [])];
+      if (!nextAccepted.includes(currentUserId)) nextAccepted.push(currentUserId);
+
+      const nextRoles = { ...(chat.participantRoles || {}) };
+      nextRoles[currentUserId] = user.role;
+
+      await firestoreUpdateDoc(doc(db, 'orders', `chat_c_${chat.id}`), {
+        participants: nextParticipants,
+        acceptedParticipants: nextAccepted,
+        participantRoles: nextRoles,
+        lastMessage: `${currentUserName} accepted the invitation. Chat unlocked!`,
+        lastMessageTime: Date.now(),
+        updatedAt: Date.now()
+      });
+
+      const welcomeMsgId = `system_${Date.now()}`;
+      const targetStatus = getTargetRoleStatus(creatorRole);
+      
+      const welcomeMsg = sanitizeForFirestore({
+        id: `chat_m_${welcomeMsgId}`,
+        chatId: chat.id,
+        senderId: 'system',
+        senderName: 'System',
+        senderRole: 'system',
+        message: `${currentUserName} joined the conversation. You can now chat!`,
+        createdAt: Date.now(),
+        readBy: [currentUserId],
+        createdBy: currentUserId,
+        status: targetStatus
+      });
+
+      await setDoc(doc(db, 'orders', `chat_m_${welcomeMsgId}`), welcomeMsg);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `orders/chat_c_${chat.id}/accept`);
+    }
+  };
+
+  const declineChatInvite = async (invite: ChatInvite) => {
+    if (!user) return;
+    try {
+      await firestoreUpdateDoc(doc(db, 'orders', `chat_i_${invite.id}`), {
+        status: 'declined',
+        updatedAt: Date.now()
+      });
+
+      try {
+        await firestoreDeleteDoc(doc(db, 'orders', `chat_c_${invite.chatId}`));
+      } catch (e) {
+        console.warn("Failed to delete chat doc on decline, updating status to declined instead:", e);
+        await firestoreUpdateDoc(doc(db, 'orders', `chat_c_${invite.chatId}`), {
+          status: 'declined',
+          updatedAt: Date.now()
+        });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `orders/chat_i_${invite.id}/decline`);
+    }
+  };
+
+  const sendChatMessage = async (msg: ChatMessage, chat: Chat, recipientRole: string) => {
+    if (!user) return;
+    try {
+      const targetStatus = chat.type === 'group' ? 'hold' : getTargetRoleStatus(recipientRole);
+
+      const msgDoc = sanitizeForFirestore({
+        ...msg,
+        id: `chat_m_${msg.id}`,
+        createdBy: user.id,
+        status: targetStatus,
+      });
+
+      await setDoc(doc(db, 'orders', `chat_m_${msg.id}`), msgDoc);
+
+      const nextUnread = { ...(chat.unreadCount || {}) };
+      chat.participants.forEach(pId => {
+        if (pId !== user.id) {
+          nextUnread[pId] = (nextUnread[pId] || 0) + 1;
+        }
+      });
+
+      await firestoreUpdateDoc(doc(db, 'orders', `chat_c_${chat.id}`), {
+        lastMessage: msg.message || (msg.imageAttachments && msg.imageAttachments.length > 0 ? '📷 Image attachment' : '🎤 Voice note'),
+        lastMessageTime: Date.now(),
+        lastSenderName: msg.senderName,
+        unreadCount: nextUnread,
+        updatedAt: Date.now()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `orders/chat_m_${msg.id}`);
+    }
+  };
+
   return (
     <LeadContext.Provider value={{
-      leads, invoices, orders, inventory,
+      leads, invoices, orders, inventory, chats, messages, invites,
       addLead, updateLead, deleteLead,
       addInvoice, updateInvoice, deleteInvoice,
       addOrder, updateOrder, deleteOrder,
-      addInventoryMovement, deleteInventoryMovement
+      addInventoryMovement, deleteInventoryMovement,
+      sendChatInvite, acceptChatInvite, declineChatInvite, sendChatMessage
     }}>
       {children}
     </LeadContext.Provider>

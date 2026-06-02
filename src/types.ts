@@ -170,3 +170,49 @@ export interface InventoryMovement {
   quantity: number;
   createdAt: number;
 }
+
+export interface Chat {
+  id: string;
+  type: 'direct' | 'group';
+  name: string; // Group name or recipient name
+  recipientEmail?: string; // Recipient email (for direct chats)
+  recipientRole?: string;
+  avatar?: string;
+  participants: string[]; // User IDs of participants
+  acceptedParticipants: string[]; // User IDs who accepted
+  createdAt: number;
+  updatedAt: number;
+  lastMessage?: string;
+  lastMessageTime?: number;
+  lastSenderName?: string;
+  unreadCount?: { [userId: string]: number };
+  participantRoles?: { [userId: string]: string };
+}
+
+export interface ChatMessage {
+  id: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: string;
+  message: string;
+  imageAttachments?: string[];
+  pdfAttachments?: string[];
+  voiceNote?: string | null;
+  createdAt: number;
+  readBy: string[]; // List of user IDs who read the message
+}
+
+export interface ChatInvite {
+  id: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+  senderEmail: string;
+  recipientEmail: string;
+  status: 'pending' | 'accepted' | 'declined';
+  chatType: 'direct' | 'group';
+  groupName?: string;
+  createdAt: number;
+}
+
