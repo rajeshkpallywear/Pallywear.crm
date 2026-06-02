@@ -200,10 +200,11 @@ export default function ConversationDashboard({
 
   // Local storage helpers for robust fallback
   const saveChatLocally = (chat: Chat) => {
-    const local = localStorage.getItem('pallywear_local_chats') || '[]';
     try {
-      const list = JSON.parse(local) as Chat[];
-      const filtered = list.filter(c => c.id !== chat.id);
+      const local = localStorage.getItem('pallywear_local_chats') || '[]';
+      let list = JSON.parse(local);
+      if (!Array.isArray(list)) list = [];
+      const filtered = list.filter((c: any) => c && c.id !== chat.id);
       filtered.push(chat);
       localStorage.setItem('pallywear_local_chats', JSON.stringify(filtered));
     } catch (e) {
@@ -212,10 +213,11 @@ export default function ConversationDashboard({
   };
 
   const saveInviteLocally = (invite: ChatInvite) => {
-    const local = localStorage.getItem('pallywear_local_invites') || '[]';
     try {
-      const list = JSON.parse(local) as ChatInvite[];
-      const filtered = list.filter(i => i.id !== invite.id);
+      const local = localStorage.getItem('pallywear_local_invites') || '[]';
+      let list = JSON.parse(local);
+      if (!Array.isArray(list)) list = [];
+      const filtered = list.filter((i: any) => i && i.id !== invite.id);
       filtered.push(invite);
       localStorage.setItem('pallywear_local_invites', JSON.stringify(filtered));
     } catch (e) {
@@ -224,9 +226,10 @@ export default function ConversationDashboard({
   };
 
   const saveMessageLocally = (msg: ChatMessage) => {
-    const local = localStorage.getItem('pallywear_local_messages') || '[]';
     try {
-      const list = JSON.parse(local) as ChatMessage[];
+      const local = localStorage.getItem('pallywear_local_messages') || '[]';
+      let list = JSON.parse(local);
+      if (!Array.isArray(list)) list = [];
       list.push(msg);
       localStorage.setItem('pallywear_local_messages', JSON.stringify(list));
     } catch (e) {
@@ -235,35 +238,47 @@ export default function ConversationDashboard({
   };
 
   const refreshLocalData = () => {
-    const localChats = localStorage.getItem('pallywear_local_chats') || '[]';
-    setChats(prev => {
-      try {
-        const localList = JSON.parse(localChats) as Chat[];
-        const prevIds = new Set(prev.map(c => c.id));
-        const uniqueLocal = localList.filter(c => !prevIds.has(c.id));
-        return [...prev, ...uniqueLocal];
-      } catch (e) { return prev; }
-    });
+    try {
+      const localChats = localStorage.getItem('pallywear_local_chats') || '[]';
+      setChats(prev => {
+        try {
+          let localList = JSON.parse(localChats);
+          if (!Array.isArray(localList)) localList = [];
+          const prevList = prev || [];
+          const prevIds = new Set(prevList.map(c => c && c.id));
+          const uniqueLocal = localList.filter((c: any) => c && c.id && !prevIds.has(c.id));
+          return [...prevList, ...uniqueLocal];
+        } catch (e) { return prev || []; }
+      });
 
-    const localInvites = localStorage.getItem('pallywear_local_invites') || '[]';
-    setInvites(prev => {
-      try {
-        const localList = JSON.parse(localInvites) as ChatInvite[];
-        const prevIds = new Set(prev.map(i => i.id));
-        const uniqueLocal = localList.filter(i => !prevIds.has(i.id));
-        return [...prev, ...uniqueLocal];
-      } catch (e) { return prev; }
-    });
+      const localInvites = localStorage.getItem('pallywear_local_invites') || '[]';
+      setInvites(prev => {
+        try {
+          let localList = JSON.parse(localInvites);
+          if (!Array.isArray(localList)) localList = [];
+          const prevList = prev || [];
+          const prevIds = new Set(prevList.map(i => i && i.id));
+          const uniqueLocal = localList.filter((i: any) => i && i.id && !prevIds.has(i.id));
+          return [...prevList, ...uniqueLocal];
+        } catch (e) { return prev || []; }
+      });
 
-    const localMsgs = localStorage.getItem('pallywear_local_messages') || '[]';
-    setMessages(prev => {
-      try {
-        const localList = JSON.parse(localMsgs) as ChatMessage[];
-        const prevIds = new Set(prev.map(m => m.id));
-        const uniqueLocal = localList.filter(m => !prevIds.has(m.id));
-        return [...prev, ...uniqueLocal];
-      } catch (e) { return prev; }
-    });
+      const localMsgs = localStorage.getItem('pallywear_local_messages') || '[]';
+      setMessages(prev => {
+        try {
+          let localList = JSON.parse(localMsgs);
+          if (!Array.isArray(localList)) localList = [];
+          // Filter local messages for currently selected chat only to avoid mixing messages
+          const localForChat = selectedChatId ? localList.filter((m: any) => m && m.chatId === selectedChatId) : [];
+          const prevList = prev || [];
+          const prevIds = new Set(prevList.map(m => m && m.id));
+          const uniqueLocal = localForChat.filter((m: any) => m && m.id && !prevIds.has(m.id));
+          return [...prevList, ...uniqueLocal];
+        } catch (e) { return prev || []; }
+      });
+    } catch (error) {
+      console.error("Error refreshing local data:", error);
+    }
   };
 
   // UI Selection States
@@ -301,13 +316,19 @@ export default function ConversationDashboard({
   const currentUserEmail = currentUser?.email || '';
   const currentUserName = currentUser?.name || 'User';
 
-  // Firestore onSnapshot listeners
+  // Firestore onSnapshot listeners (filtered by user context for security & performance)
   useEffect(() => {
     if (!isOpen || !currentUserId) return;
 
     seedMockChatData(currentUserId, currentUserEmail);
 
-    const unsubChats = onSnapshot(collection(db, 'pallywear_adv_chats'), (snapshot) => {
+    // Query chats where current user is a participant
+    const qChats = query(
+      collection(db, 'pallywear_adv_chats'),
+      where('participants', 'array-contains', currentUserId)
+    );
+
+    const unsubChats = onSnapshot(qChats, (snapshot) => {
       const list = snapshot.docs.map(doc => doc.data() as Chat);
       const local = localStorage.getItem('pallywear_local_chats') || '[]';
       let merged = [...list];
@@ -318,23 +339,15 @@ export default function ConversationDashboard({
         merged = [...merged, ...uniqueLocal];
       } catch (e) {}
       setChats(merged);
+    }, (error) => {
+      console.warn("Chats sync limited, falling back to local data:", error);
+      refreshLocalData();
     });
 
-    const unsubMessages = onSnapshot(collection(db, 'pallywear_adv_messages'), (snapshot) => {
-      const list = snapshot.docs.map(doc => doc.data() as ChatMessage);
-      const local = localStorage.getItem('pallywear_local_messages') || '[]';
-      let merged = [...list];
-      try {
-        const localList = JSON.parse(local) as ChatMessage[];
-        const firestoreIds = new Set(list.map(m => m.id));
-        const uniqueLocal = localList.filter(m => !firestoreIds.has(m.id));
-        merged = [...merged, ...uniqueLocal];
-      } catch (e) {}
-      setMessages(merged);
-    });
-
-    const unsubInvites = onSnapshot(collection(db, 'pallywear_adv_invites'), (snapshot) => {
-      const list = snapshot.docs.map(doc => doc.data() as ChatInvite);
+    // Query invites where user is sender or recipient (split due to Firestore limitations)
+    const invitesMap = new Map<string, ChatInvite>();
+    const updateInvitesState = () => {
+      const list = Array.from(invitesMap.values());
       const local = localStorage.getItem('pallywear_local_invites') || '[]';
       let merged = [...list];
       try {
@@ -344,14 +357,78 @@ export default function ConversationDashboard({
         merged = [...merged, ...uniqueLocal];
       } catch (e) {}
       setInvites(merged);
+    };
+
+    const qReceived = query(
+      collection(db, 'pallywear_adv_invites'),
+      where('recipientEmail', '==', currentUserEmail.toLowerCase().trim())
+    );
+    const unsubReceived = onSnapshot(qReceived, (snapshot) => {
+      snapshot.docs.forEach(doc => invitesMap.set(doc.id, doc.data() as ChatInvite));
+      updateInvitesState();
+    }, (error) => {
+      console.warn("Received invites sync limited:", error);
+      refreshLocalData();
+    });
+
+    const qSent = query(
+      collection(db, 'pallywear_adv_invites'),
+      where('senderId', '==', currentUserId)
+    );
+    const unsubSent = onSnapshot(qSent, (snapshot) => {
+      snapshot.docs.forEach(doc => invitesMap.set(doc.id, doc.data() as ChatInvite));
+      updateInvitesState();
+    }, (error) => {
+      console.warn("Sent invites sync limited:", error);
+      refreshLocalData();
     });
 
     return () => {
       unsubChats();
-      unsubMessages();
-      unsubInvites();
+      unsubReceived();
+      unsubSent();
     };
-  }, [isOpen, currentUserId]);
+  }, [isOpen, currentUserId, currentUserEmail]);
+
+  // Synchronize messages for the selected chat only (huge performance optimization)
+  useEffect(() => {
+    if (!isOpen || !selectedChatId) {
+      setMessages([]);
+      return;
+    }
+
+    const qMessages = query(
+      collection(db, 'pallywear_adv_messages'),
+      where('chatId', '==', selectedChatId)
+    );
+
+    const unsubscribe = onSnapshot(qMessages, (snapshot) => {
+      const list = snapshot.docs.map(doc => doc.data() as ChatMessage);
+      const local = localStorage.getItem('pallywear_local_messages') || '[]';
+      let merged = [...list];
+      try {
+        const localList = JSON.parse(local) as ChatMessage[];
+        const localForChat = localList.filter(m => m.chatId === selectedChatId);
+        const firestoreIds = new Set(list.map(m => m.id));
+        const uniqueLocal = localForChat.filter(m => !firestoreIds.has(m.id));
+        merged = [...merged, ...uniqueLocal];
+      } catch (e) {}
+      setMessages(merged);
+    }, (error) => {
+      console.warn("Messages sync limited for chat:", selectedChatId, error);
+      // Fallback to local messages for this chat only
+      try {
+        const local = localStorage.getItem('pallywear_local_messages') || '[]';
+        const localList = JSON.parse(local) as ChatMessage[];
+        const localForChat = localList.filter(m => m.chatId === selectedChatId);
+        setMessages(localForChat);
+      } catch (e) {
+        setMessages([]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [isOpen, selectedChatId]);
 
   // Read receipts and scroll to bottom
   useEffect(() => {
@@ -510,8 +587,8 @@ export default function ConversationDashboard({
       refreshLocalData();
       alert(`Invitation sent to ${targetEmail}! Conversation will unlock once they accept.`);
     } catch (err) {
-      console.error(err);
-      alert("Failed to send invite.");
+      console.error("Failed to send invite error details:", err);
+      alert("Failed to send invite: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSendingAction(false);
     }

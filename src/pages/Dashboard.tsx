@@ -209,7 +209,7 @@ export default function Dashboard() {
     }
   };
   const [graphPeriod, setGraphPeriod] = React.useState<'today' | 'week' | 'month'>('week');
-  const [selectedOrderCategory, setSelectedOrderCategory] = React.useState<'all' | 'recent' | 'create_order' | 'hold' | 'process' | 'completed' | null>('all');
+  const [selectedOrderCategory, setSelectedOrderCategory] = React.useState<'all' | 'recent' | 'create_order' | 'hold' | 'process' | 'completed' | null>('recent');
   const [isMobileOpen, setIsMobileOpen] = React.useState(false);
   const [isInboxOpen, setIsInboxOpen] = React.useState(false);
   const [inboxSelectedId, setInboxSelectedId] = React.useState<string | null>(null);
@@ -824,27 +824,15 @@ export default function Dashboard() {
                   <div className="flex gap-4 mb-6">
                     {([
                       {
-                        key: 'all' as const,
-                        label: 'Total Orders',
-                        title: 'Total Orders',
-                        count: myOrders.length,
-                        icon: ShoppingBag,
-                        activeBg: 'bg-brand-primary text-white border-brand-primary shadow-md scale-105',
-                        hoverBg: 'hover:border-brand-primary/50',
-                        badgeActive: 'bg-white text-brand-primary border-white',
-                        badgeNormal: 'bg-brand-primary text-white border-brand-primary',
-                        navTab: null,
-                      },
-                      {
-                        key: 'hold' as const,
-                        label: 'Hold Orders',
-                        title: 'Hold Orders',
-                        count: holdOrders.length,
-                        icon: PauseCircle,
-                        activeBg: 'bg-amber-500 text-white border-amber-500 shadow-md scale-105',
-                        hoverBg: 'hover:border-amber-400',
-                        badgeActive: 'bg-white text-amber-500 border-white',
-                        badgeNormal: 'bg-amber-500 text-white border-amber-500',
+                        key: 'recent' as const,
+                        label: 'Recent Orders',
+                        title: 'Recent Orders',
+                        count: recentOrders.length,
+                        icon: Clock,
+                        activeBg: 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105',
+                        hoverBg: 'hover:border-indigo-500/50',
+                        badgeActive: 'bg-white text-indigo-600 border-white',
+                        badgeNormal: 'bg-indigo-600 text-white border-indigo-600',
                         navTab: null,
                       },
                       {
@@ -860,6 +848,18 @@ export default function Dashboard() {
                         navTab: null,
                       },
                       {
+                        key: 'hold' as const,
+                        label: 'Hold Orders',
+                        title: 'Hold Orders',
+                        count: holdOrders.length,
+                        icon: PauseCircle,
+                        activeBg: 'bg-amber-500 text-white border-amber-500 shadow-md scale-105',
+                        hoverBg: 'hover:border-amber-400',
+                        badgeActive: 'bg-white text-amber-500 border-white',
+                        badgeNormal: 'bg-amber-500 text-white border-amber-500',
+                        navTab: null,
+                      },
+                      {
                         key: 'completed' as const,
                         label: 'Completed Orders',
                         title: 'Completed Orders',
@@ -869,6 +869,18 @@ export default function Dashboard() {
                         hoverBg: 'hover:border-emerald-400',
                         badgeActive: 'bg-white text-emerald-500 border-white',
                         badgeNormal: 'bg-emerald-500 text-white border-emerald-500',
+                        navTab: null,
+                      },
+                      {
+                        key: 'all' as const,
+                        label: 'Total Orders',
+                        title: 'Total Orders',
+                        count: myOrders.length,
+                        icon: ShoppingBag,
+                        activeBg: 'bg-brand-primary text-white border-brand-primary shadow-md scale-105',
+                        hoverBg: 'hover:border-brand-primary/50',
+                        badgeActive: 'bg-white text-brand-primary border-white',
+                        badgeNormal: 'bg-brand-primary text-white border-brand-primary',
                         navTab: null,
                       },
                     ]).map(cat => {
