@@ -44,7 +44,8 @@ export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accep
             const options = {
               maxSizeMB: 0.15,
               maxWidthOrHeight: 1280,
-              useWebWorker: true
+              useWebWorker: true,
+              fileType: file.type
             };
             fileToProcess = await imageCompression(file, options);
           } catch (compressErr) {
@@ -90,11 +91,17 @@ export default function FileUpload({ label, onFilesSelected, maxFiles = 5, accep
             await saveFileToLocalDB(attachmentId, data);
             finalData = `FIRESTORE_ATTACHMENT:${typePrefix}:${attachmentId}`;
           } catch (uploadErr) {
-            console.error("Failed to upload to Firestore attachments, fallback to IndexedDB:", uploadErr);
-            const key = `file_${file.name.replace(/[^a-zA-Z0-9]/g, '_')}_${fileToProcess.size}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-            await saveFileToLocalDB(key, data);
-            const mimeType = data.split(';base64,')[0];
-            finalData = `${mimeType};base64,IDB_${key}`;
+            console.error("Failed to upload to Firestore attachments, fallback to inline base64 or IndexedDB:", uploadErr);
+            // If the base64 string is small enough to fit in Firestore (under 800KB),
+            // store it directly as inline base64 so all other users can view it.
+            if (data.length < 800 * 1024) {
+              finalData = data;
+            } else {
+              const key = `file_${file.name.replace(/[^a-zA-Z0-9]/g, '_')}_${fileToProcess.size}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+              await saveFileToLocalDB(key, data);
+              const mimeType = data.split(';base64,')[0];
+              finalData = `${mimeType};base64,IDB_${key}`;
+            }
           }
         }
 

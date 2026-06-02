@@ -3,6 +3,7 @@ import { X, User, Phone, MapPin, FileText, Globe, Clock, AlertCircle, CheckCircl
 import { useAuth } from '../context/AuthContext';
 import { Order, OrderStatus, UserRole } from '../types';
 import ImageViewer from './ImageViewer';
+// ArtProofGenerator import removed
 import WorkflowVisualizer from './WorkflowVisualizer';
 import React, { useState, useEffect } from 'react';
 import imageCompression from 'browser-image-compression';
@@ -1148,6 +1149,7 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                       </div>
                     </div>
                   )}
+                  {/* Art Proof Mockup Card block removed */}
                   {order.machineFiles?.length > 0 && (
                     <div>
                       <p className="text-[10px] font-bold text-indigo-500 uppercase mb-2">Machine Language (ZIP)</p>
@@ -1379,6 +1381,30 @@ export default function OrderDetailModal({ order, onClose, onUpdateStatus, onUpd
                         )}
 
                         {order.status === OrderStatus.ACCOUNTS && (
+                          <button
+                            disabled={isProcessingAction}
+                            onClick={async () => {
+                              setIsProcessingAction(true);
+                              try {
+                                if (onUpdateOrder) {
+                                  await onUpdateOrder(order.id, { status: OrderStatus.ORDER_MANAGEMENT, updatedAt: Date.now() });
+                                } else if (onUpdateStatus) {
+                                  onUpdateStatus(OrderStatus.ORDER_MANAGEMENT);
+                                }
+                                alert("Order moved to Order Management.");
+                              } catch (e) {
+                                alert("Action failed.");
+                              } finally {
+                                setIsProcessingAction(false);
+                              }
+                            }}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 font-black cursor-pointer"
+                          >
+                            <CheckCircle size={14} /> Move to Order Management
+                          </button>
+                        )}
+
+                        {order.status === OrderStatus.DESIGN && (
                           <button
                             disabled={isProcessingAction}
                             onClick={async () => {

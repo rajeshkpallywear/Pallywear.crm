@@ -33,6 +33,7 @@ import { Order, OrderStatus } from '../types';
 import FileUpload from './FileUpload';
 import ImageViewer from './ImageViewer';
 import OrderDetailModal from './OrderDetailModal';
+// ArtProofGenerator import removed
 import { cn, getDisplayCategory, isOrderSizeValid, isAttachmentImage, isAttachmentAudio } from '../lib/utils';
 import ConversationDashboard, { Conversation } from './ConversationDashboard';
 
@@ -362,42 +363,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
     }
   };
 
-  const handleSendToOrderManagement = async () => {
-    if (!selectedOrder || isProcessing) return;
-
-    const allDesignAttachments = [...designFiles, ...newDesignFiles];
-
-    const nextOrderState = {
-      ...selectedOrder,
-      designAttachments: allDesignAttachments,
-      machineFiles: machineFiles
-    };
-
-    if (!isOrderSizeValid(nextOrderState)) {
-      alert("Error: Total order data limit exceeded (Max 1MB). Please use fewer design files or smaller images.");
-      return;
-    }
-
-    setIsProcessing(true);
-    try {
-      await onUpdateOrder(selectedOrder.id, {
-        status: OrderStatus.ORDER_MANAGEMENT,
-        designAttachments: allDesignAttachments,
-        machineFiles: machineFiles,
-        updatedAt: Date.now()
-      });
-      setSelectedOrder(null);
-      setDesignFiles([]);
-      setNewDesignFiles([]);
-      setMachineFiles([]);
-      alert("Success: Design artwork uploaded and order sent to Staff.");
-    } catch (e) {
-      console.error(e);
-      alert("An error occurred while moving the order.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  // Function removed as designs are now auto-saved and staff advances orders from details modal.
 
   const handleReturnToCreator = () => {
     if (!selectedOrder || isProcessing) return;
@@ -539,11 +505,36 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
     }
   };
 
-  const handleRemoveFile = (index: number, type: 'design' | 'machine') => {
+  const handleRemoveFile = async (index: number, type: 'design' | 'machine') => {
+    if (!selectedOrder) return;
     if (type === 'design') {
-      setDesignFiles(prev => prev.filter((_, i) => i !== index));
+      const updatedDesignFiles = designFiles.filter((_, i) => i !== index);
+      setDesignFiles(updatedDesignFiles);
+      try {
+        await onUpdateOrder(selectedOrder.id, {
+          designAttachments: updatedDesignFiles,
+          updatedAt: Date.now()
+        });
+        setSelectedOrder(prev => prev ? { ...prev, designAttachments: updatedDesignFiles } : null);
+        alert("Design removed successfully.");
+      } catch (err) {
+        console.error("Failed to remove design:", err);
+        alert("Failed to update database.");
+      }
     } else {
-      setMachineFiles(prev => prev.filter((_, i) => i !== index));
+      const updatedMachineFiles = machineFiles.filter((_, i) => i !== index);
+      setMachineFiles(updatedMachineFiles);
+      try {
+        await onUpdateOrder(selectedOrder.id, {
+          machineFiles: updatedMachineFiles,
+          updatedAt: Date.now()
+        });
+        setSelectedOrder(prev => prev ? { ...prev, machineFiles: updatedMachineFiles } : null);
+        alert("Machine file removed successfully.");
+      } catch (err) {
+        console.error("Failed to remove machine file:", err);
+        alert("Failed to update database.");
+      }
     }
   };
 
@@ -939,7 +930,25 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                         <FileUpload
                           label=""
                           accept="image/png,.png"
-                          onFilesSelected={(files) => setNewDesignFiles(files)}
+                          onFilesSelected={async (files) => {
+                            setNewDesignFiles(files);
+                            if (selectedOrder && files.length > 0) {
+                              try {
+                                const allDesignAttachments = [...(selectedOrder.designAttachments || []), ...files];
+                                await onUpdateOrder(selectedOrder.id, {
+                                  designAttachments: allDesignAttachments,
+                                  updatedAt: Date.now()
+                                });
+                                setSelectedOrder(prev => prev ? { ...prev, designAttachments: allDesignAttachments } : null);
+                                setDesignFiles(allDesignAttachments);
+                                setNewDesignFiles([]);
+                                alert("Design uploaded and saved successfully!");
+                              } catch (err) {
+                                console.error("Failed to auto-save design:", err);
+                                alert("Failed to save uploaded design.");
+                              }
+                            }
+                          }}
                         />
                         <div className="max-h-[80px] overflow-y-auto space-y-1 mt-2">
                           {designFiles.map((file, i) => (
@@ -1027,9 +1036,25 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                       </div>
                     </div>
                   )}
-                </div>
               </div>
             </div>
+
+            {/* Simple Design Preview */}
+            {(designFiles.length > 0 || newDesignFiles.length > 0) && (
+              <div className="border-t border-gray-150 pt-6 space-y-4 text-left">
+                <h4 className="text-sm font-black text-purple-900 uppercase tracking-widest flex items-center gap-2">
+                  <span>🎨 Design Artwork Preview</span>
+                </h4>
+                <div className="w-full max-w-md mx-auto aspect-square rounded-2xl border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center relative group p-4">
+                  <img
+                    src={newDesignFiles[0] || designFiles[0]}
+                    className="w-full h-full object-contain"
+                    alt="Design Preview"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
             {/* Modal actions footer */}
             <div className="p-8 border-t border-gray-100 flex flex-col sm:flex-row gap-4 shrink-0 bg-gray-50/50">
@@ -1063,14 +1088,7 @@ export default function DesignDashboard({ orders, onUpdateOrder, user, activeCha
                 Return to Sales/Staff
               </button>
 
-              <button
-                disabled={isProcessing || selectedOrder.status === OrderStatus.HOLD}
-                onClick={handleSendToOrderManagement}
-                className="px-6 py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-black uppercase text-xs tracking-wider transition-all scale-100 hover:scale-[1.02] border-none flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ml-auto"
-              >
-                <CheckCircle size={15} />
-                Send Design to Staff
-              </button>
+              {/* Button removed to prevent manual status advancement; auto-saved instead. */}
             </div>
           </motion.div>
         </div>

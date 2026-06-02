@@ -94,8 +94,7 @@ service cloud.firestore {
       function canReadLeads() {
         return isSignedIn() && (
           resource.data.createdBy == request.auth.uid || 
-          isAdmin() || 
-          hasUserRole(['admin', 'marketing', 'user', 'staff', 'accounts', 'order_management', 'digitizer'])
+          isAdmin()
         );
       }
 
@@ -103,7 +102,7 @@ service cloud.firestore {
       
       allow create: if isSignedIn() && isValidId(leadId) && (request.resource.data.createdBy == request.auth.uid) && isValidLead(request.resource.data);
       
-      allow update: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin() || hasUserRole(['marketing', 'admin'])) && 
+      allow update: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin()) && 
                       isValidLead(request.resource.data) &&
                       request.resource.data.createdBy == resource.data.createdBy;
                       
@@ -145,9 +144,29 @@ service cloud.firestore {
                data.createdBy is string;
       }
 
-      allow get, list: if isSignedIn();
+      function isOrderOwner(data) {
+        return data.createdBy == request.auth.uid;
+      }
+
+      function isRoleProcessOrder(data) {
+        return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          (getUserRole() == 'designer' && data.status in ['design', 'hold']) ||
+          (getUserRole() == 'production' && data.status in ['production', 'hold', 'delivered']) ||
+          (getUserRole() == 'delivery' && data.status in ['delivery', 'delivered']) ||
+          (getUserRole() == 'accounts' && data.status in ['accounts']) ||
+          (getUserRole() == 'order_management' && data.status in ['order_management', 'production', 'delivery', 'design', 'hold']) ||
+          (getUserRole() == 'digitizer' && data.status in ['design', 'order_management', 'production']) ||
+          (getUserRole() == 'staff' && data.status in ['pending', 'draft', 'hold', 'design', 'order_management', 'production', 'delivery', 'delivered'])
+        );
+      }
+
+      function canAccessOrder(data) {
+        return isOrderOwner(data) || isAdmin() || isRoleProcessOrder(data);
+      }
+
+      allow get, list: if isSignedIn() && canAccessOrder(resource.data);
       allow create: if isSignedIn() && isValidId(orderId) && isValidOrder(request.resource.data) && request.resource.data.createdBy == request.auth.uid;
-      allow update: if isSignedIn();
+      allow update: if isSignedIn() && canAccessOrder(resource.data) && canAccessOrder(request.resource.data);
       allow delete: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
 

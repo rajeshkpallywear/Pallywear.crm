@@ -554,13 +554,16 @@ export default function Dashboard() {
 
   // === COMPUTED STATS ===
   const totalOrderValue = filteredOrders.reduce((s, o) => s + (o.financials?.totalAmount || 0), 0);
-  const holdOrders = filteredOrders.filter(o => ['hold', 'HOLD'].includes(o.status));
+  const holdOrders = filteredOrders.filter(o => 
+    ['hold', 'HOLD'].includes(o.status) && 
+    (o.createdBy === user?.id || (o.assignedDesigner && user?.name && o.assignedDesigner.toLowerCase() === user.name.toLowerCase()) || user?.role === 'admin' || user?.role === UserRole.ADMIN)
+  );
   const completedOrders = filteredOrders.filter(o => ['delivered', 'DELIVERED'].includes(o.status));
   const processOrders = filteredOrders.filter(o => !['hold', 'HOLD', 'delivered', 'DELIVERED', 'draft', 'DRAFT', 'pending', 'PENDING'].includes(o.status));
-  const recentOrders = filteredOrders.filter(o => [
-    'order_management', 'production', 'delivery', 'pending', 'draft',
-    OrderStatus.ORDER_MANAGEMENT, OrderStatus.PRODUCTION, OrderStatus.DELIVERY, OrderStatus.PENDING, OrderStatus.DRAFT
-  ].includes(o.status));
+  const recentOrders = filteredOrders.filter(o => 
+    ['pending', 'draft', OrderStatus.PENDING, OrderStatus.DRAFT].includes(o.status) && 
+    (o.createdBy === user?.id || user?.role === 'admin' || user?.role === UserRole.ADMIN)
+  );
 
   const hourOfDay = new Date().getHours();
   const greeting = hourOfDay < 12 ? 'Good morning' : hourOfDay < 17 ? 'Good afternoon' : 'Good evening';
@@ -969,21 +972,21 @@ export default function Dashboard() {
                                   </td>
                                   <td className="px-6 py-3.5">
                                     <div className="flex items-center gap-1.5 flex-wrap">
-                                      {['pending', 'hold', 'draft', 'PENDING', 'HOLD', 'DRAFT'].includes(o.status) && (
-                                        <>
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); setSharingOrder(o); }}
-                                            className="bg-pink-50 hover:bg-pink-100 text-pink-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-pink-200 transition-colors cursor-pointer"
-                                          >
-                                            Share to Designers
-                                          </button>
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); handleUpdateOrder(o.id, { status: 'accounts' as any }); }}
-                                            className="bg-yellow-50 hover:bg-yellow-100 text-yellow-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-yellow-200 transition-colors cursor-pointer"
-                                          >
-                                            Move to Accounts
-                                          </button>
-                                        </>
+                                      {['pending', 'PENDING', 'draft', 'DRAFT', 'accounts', 'ACCOUNTS'].includes(o.status) && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setSharingOrder(o); }}
+                                          className="bg-pink-50 hover:bg-pink-100 text-pink-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-pink-200 transition-colors cursor-pointer"
+                                        >
+                                          Share to Designers
+                                        </button>
+                                      )}
+                                      {['pending', 'PENDING', 'draft', 'DRAFT'].includes(o.status) && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); handleUpdateOrder(o.id, { status: 'accounts' as any }); }}
+                                          className="bg-yellow-50 hover:bg-yellow-100 text-yellow-700 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-yellow-200 transition-colors cursor-pointer"
+                                        >
+                                          Move to Accounts
+                                        </button>
                                       )}
                                       <button
                                         onClick={(e) => { e.stopPropagation(); downloadOrderPDF(o); }}

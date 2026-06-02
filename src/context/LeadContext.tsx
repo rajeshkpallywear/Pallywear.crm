@@ -8,6 +8,7 @@ import {
   doc,
   query,
   where,
+  or,
   setDoc,
   getDocFromServer,
   getDoc
@@ -127,11 +128,8 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     let unsubscribeLeads = () => { };
     if (user.role === 'admin' || user.role === 'marketing' || user.role === 'user' || user.role === 'staff' || user.role === 'telecaller' || user.role === UserRole.TELECALLER) {
       const leadsRef = collection(db, 'leads');
-      // Admin/staff see all leads. Telecaller sees all leads they can create.
-      // Regular users only see leads assigned/created to them.
-      const isAdminOrStaff = user.role === 'admin' || user.role === 'staff';
-      const isTelecaller = user.role === 'telecaller' || user.role === UserRole.TELECALLER;
-      const qLeads = (isAdminOrStaff || isTelecaller)
+      // Only Admin sees all leads. Others see leads they created to align with firestore rules.
+      const qLeads = (user.role === 'admin' || user.role === UserRole.ADMIN)
         ? query(leadsRef)
         : query(leadsRef, where('createdBy', '==', user.id));
 
@@ -166,10 +164,45 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    const getRoleProcessStatuses = (role: string): string[] => {
+      switch (role) {
+        case 'designer':
+        case UserRole.DESIGNER:
+          return ['design', 'hold', 'DESIGN', 'HOLD'];
+        case 'production':
+        case UserRole.PRODUCTION:
+          return ['production', 'hold', 'delivered', 'PRODUCTION', 'HOLD', 'DELIVERED'];
+        case 'delivery':
+        case UserRole.DELIVERY:
+          return ['delivery', 'delivered', 'DELIVERY', 'DELIVERED'];
+        case 'accounts':
+        case UserRole.ACCOUNTS:
+          return ['accounts', 'ACCOUNTS'];
+        case 'order_management':
+        case UserRole.ORDER_MANAGEMENT:
+          return ['order_management', 'production', 'delivery', 'design', 'hold', 'ORDER_MANAGEMENT', 'PRODUCTION', 'DELIVERY', 'DESIGN', 'HOLD'];
+        case 'digitizer':
+        case UserRole.DIGITIZER:
+          return ['design', 'order_management', 'production', 'DESIGN', 'ORDER_MANAGEMENT', 'PRODUCTION'];
+        case 'staff':
+        case UserRole.STAFF:
+          return ['pending', 'draft', 'hold', 'design', 'order_management', 'production', 'delivery', 'delivered', 'PENDING', 'DRAFT', 'HOLD', 'DESIGN', 'ORDER_MANAGEMENT', 'PRODUCTION', 'DELIVERY', 'DELIVERED'];
+        default:
+          return [];
+      }
+    };
+
     const ordersRef = collection(db, 'orders');
-    // For orders, we usually show everything to everyone in the flow, or filter by role
-    // Here we show all orders to keep the flow transparent across departments
-    const unsubscribeOrders = onSnapshot(ordersRef, (snapshot) => {
+    const processStatuses = getRoleProcessStatuses(user.role);
+    
+    // Restrict orders to only own orders or those in the user role's process statuses
+    const qOrders = (user.role === 'admin' || user.role === UserRole.ADMIN)
+      ? query(ordersRef)
+      : (processStatuses.length > 0)
+        ? query(ordersRef, or(where('createdBy', '==', user.id), where('status', 'in', processStatuses)))
+        : query(ordersRef, where('createdBy', '==', user.id));
+
+    const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
