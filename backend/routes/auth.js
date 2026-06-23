@@ -134,4 +134,14 @@ router.get('/me', authenticateToken, async (req, res) => {
   }
 });
 
+// ── GET /api/auth/users ────────────────────────────────────────────────
+router.get('/users', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await db.execute('SELECT id, name, email, role FROM users');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = { router, authenticateToken };

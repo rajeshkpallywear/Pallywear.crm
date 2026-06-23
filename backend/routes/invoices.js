@@ -15,7 +15,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
 // ── POST /api/invoices ────────────────────────────────────────────────
 router.post('/', authenticateToken, async (req, res) => {
-  const { orderId, type, client, amount, status, description } = req.body;
+  const { orderId, type, client, amount, status, description, invoiceFile, invoiceFileName } = req.body;
   if (!client || !amount) return res.status(400).json({ error: 'client and amount are required' });
 
   const id = `INV-${Math.floor(800 + Math.random() * 100)}${Date.now().toString().slice(-3)}`;
@@ -23,11 +23,19 @@ router.post('/', authenticateToken, async (req, res) => {
 
   try {
     await db.execute(
-      `INSERT INTO invoices (id, order_id, type, client, amount, status, description, invoice_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO invoices (id, order_id, type, client, amount, status, description, invoice_date, invoice_file, invoice_file_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, orderId || null, type || 'Revenue', client, parseFloat(amount),
-       status || 'Pending', description || '', today]
+       status || 'Pending', description || '', today, invoiceFile || null, invoiceFileName || null]
     );
+
+    if (orderId) {
+      await db.execute(
+        `UPDATE orders SET invoice_file = ?, invoice_file_name = ? WHERE id = ?`,
+        [invoiceFile || null, invoiceFileName || null, orderId]
+      );
+    }
+
     await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
       ['Account', `Manual Invoice created for ${client} ($${amount})`]);
     const [rows] = await db.execute('SELECT * FROM invoices WHERE id = ?', [id]);
@@ -53,6 +61,19 @@ router.patch('/:id/pay', authenticateToken, async (req, res) => {
         "UPDATE purchase_orders SET status = 'Received' WHERE vendor = ? AND status = 'Sent'",
         [invoice.client]
       );
+    } else if (invoice.type === 'Revenue' && invoice.order_id) {
+      await db.execute(
+        "UPDATE orders SET status = 'Awaiting Design ZIP' WHERE id = ?",
+        [invoice.order_id]
+      );
+      await db.execute(
+        "UPDATE designs SET status = 'Awaiting Design ZIP' WHERE order_id = ?",
+        [invoice.order_id]
+      );
+      try {
+        await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+          ['Account', `Order ${invoice.order_id} advanced to Awaiting Design ZIP after payment approval.`]);
+      } catch (_) {}
     }
     res.json(invoice);
   } catch (err) {

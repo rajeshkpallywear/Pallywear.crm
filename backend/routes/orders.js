@@ -21,7 +21,8 @@ router.post('/', authenticateToken, async (req, res) => {
     customerName, customerCompany, category, quantity,
     details, sizeBreakdown, totalAmount, advancePay,
     balanceAmount, gstAmount, discountAmount, shippingCharges,
-    isUrgent, notes
+    isUrgent, notes,
+    attachedImage, attachedImageName
   } = req.body;
 
   // Support both old field names (from CRMContext) and new real schema fields
@@ -29,6 +30,7 @@ router.post('/', authenticateToken, async (req, res) => {
   const resolvedPhone = customerPhone || '';
   const resolvedItems = details || items || '';
   const resolvedTotal = totalAmount || totalVal || 0;
+  const resolvedNotes = notes || resolvedItems;
 
   const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   const now = Date.now();
@@ -40,8 +42,8 @@ router.post('/', authenticateToken, async (req, res) => {
         quantity, details, sizeBreakdown, totalAmount, advancePay,
         balanceAmount, gstAmount, discountAmount, shippingCharges,
         status, isUrgent, notes, createdAt, updatedAt,
-        createdBy, createdByName
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        createdBy, createdByName, marketing_image, marketing_notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         orderId, resolvedClientName, resolvedPhone,
         address || '', category || 'General',
@@ -49,15 +51,32 @@ router.post('/', authenticateToken, async (req, res) => {
         sizeBreakdown || '', resolvedTotal,
         advancePay || 0, balanceAmount || resolvedTotal,
         gstAmount || 0, discountAmount || 0, shippingCharges || 0,
-        'Design', isUrgent ? 1 : 0, notes || '',
+        'Design', isUrgent ? 1 : 0, resolvedNotes,
         now, now,
-        req.user.id, req.user.name
+        req.user.id, req.user.name, attachedImage || null, resolvedNotes
+      ]
+    );
+
+    // Automatically create a design record in the designs table
+    const designId = `DSN-${Math.floor(300 + Math.random() * 100)}${Date.now().toString().slice(-3)}`;
+    const today = new Date().toISOString().split('T')[0];
+    await db.execute(
+      `INSERT INTO designs (
+        id, order_id, title, status, designer, notes, design_date,
+        marketing_image, marketing_notes, marketing_staff_name
+      ) VALUES (?, ?, ?, 'Pending Review', ?, ?, ?, ?, ?, ?)`,
+      [
+        designId, orderId, `${resolvedClientName} Branding Layout`,
+        'Sarah Connor', resolvedNotes, today,
+        attachedImage || null, resolvedNotes, req.user.name
       ]
     );
 
     try {
       await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
         ['Order Management', `New Order placed: ${orderId} for ${resolvedClientName}`]);
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Design', `Design ticket ${designId} automatically queued for Order ${orderId}`]);
     } catch (_) {}
 
     const [order] = await db.execute('SELECT * FROM orders WHERE id = ?', [orderId]);
@@ -68,16 +87,90 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// ── PATCH /api/orders/:id ──────────────────────────────────────────────
-router.patch('/:id', authenticateToken, async (req, res) => {
-  const { status } = req.body;
+// ── POST /api/orders/:id/hold ─────────────────────────────────────────
+router.post('/:id/hold', authenticateToken, async (req, res) => {
+  const { isHold } = req.body;
+  try {
+    await db.execute("UPDATE orders SET is_hold = ? WHERE id = ?", [isHold ? 1 : 0, req.params.id]);
+    await db.execute("UPDATE designs SET is_hold = ? WHERE order_id = ?", [isHold ? 1 : 0, req.params.id]);
+    res.json({ message: `Order hold status updated to ${isHold ? 'ON' : 'OFF'}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/orders/:id/om-approve ───────────────────────────────────
+router.post('/:id/om-approve', authenticateToken, async (req, res) => {
+  try {
+    await db.execute("UPDATE orders SET status = 'Production', updatedAt = ? WHERE id = ?", [Date.now(), req.params.id]);
+    const [[order]] = await db.execute('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    
+    const prdId = `PRD-${Math.floor(500 + Math.random() * 100)}${Date.now().toString().slice(-3)}`;
+    const itemPart = order.details || order.items || 'Custom Blank Item';
+    const qty = order.quantity || 100;
+    await db.execute(
+      `INSERT INTO production_queue (id, order_id, item, qty, machine, progress, status, production_date)
+       VALUES (?, ?, ?, ?, 'Embroidery Machine A', 0, 'Queue', ?)`,
+      [prdId, req.params.id, itemPart.substring(0, 150), qty, new Date().toISOString().split('T')[0]]
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Order Management', `Order ${req.params.id} approved by OM. Routed to Production.`]);
+    } catch (_) {}
+
+    res.json({ message: 'Order approved to production' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/orders/:id/production-approve ───────────────────────────
+router.post('/:id/production-approve', authenticateToken, async (req, res) => {
+  try {
+    await db.execute("UPDATE orders SET status = 'Delivery', updatedAt = ? WHERE id = ?", [Date.now(), req.params.id]);
+    await db.execute("UPDATE production_queue SET status = 'Ready', progress = 100 WHERE order_id = ?", [req.params.id]);
+    
+    const [[order]] = await db.execute('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    const shipId = `SHP-${Math.floor(600 + Math.random() * 100)}${Date.now().toString().slice(-3)}`;
+    const tracking = `TRK${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 89)}`;
+    
+    await db.execute(
+      `INSERT INTO shipments (id, order_id, courier, tracking_no, status, destination, eta)
+       VALUES (?, ?, 'BlueDart Express', ?, 'Picked Up', ?, ?)`,
+      [shipId, req.params.id, tracking, order.customerAddress || 'Customer Address', new Date(Date.now() + 3*24*60*60*1000).toISOString().split('T')[0]]
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Production', `Production completed for Order ${req.params.id}. Dispatched for Delivery.`]);
+    } catch (_) {}
+
+    res.json({ message: 'Production batch complete. Advanced to Delivery.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/orders/:id/delivery-complete ────────────────────────────
+router.post('/:id/delivery-complete', authenticateToken, async (req, res) => {
+  const { balanceNotes } = req.body;
   try {
     await db.execute(
-      'UPDATE orders SET status = ?, updatedAt = ? WHERE id = ?',
-      [status, Date.now(), req.params.id]
+      "UPDATE orders SET status = 'Completed', balance_received_notes = ?, updatedAt = ? WHERE id = ?",
+      [balanceNotes || '', Date.now(), req.params.id]
     );
-    const [rows] = await db.execute('SELECT * FROM orders WHERE id = ?', [req.params.id]);
-    res.json(rows[0]);
+    await db.execute(
+      "UPDATE shipments SET status = 'Delivered' WHERE order_id = ?",
+      [req.params.id]
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Delivery', `Order ${req.params.id} delivered and settled. Balance notes: ${balanceNotes || 'none'}`]);
+    } catch (_) {}
+
+    res.json({ message: 'Delivery completed successfully.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
