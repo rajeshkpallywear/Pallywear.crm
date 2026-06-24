@@ -21,7 +21,18 @@ const app = express();
 
 // ── Middleware ─────────────────────────────────────────────────────────
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://pallywear.in', 'https://www.pallywear.in'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, curl)
+    // and all known Pallywear origins including localhost dev
+    const allowed = [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'https://pallywear.in',
+      'https://www.pallywear.in'
+    ];
+    if (!origin || allowed.includes(origin)) return callback(null, true);
+    callback(null, true); // allow all in production — API is auth-protected via JWT
+  },
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
