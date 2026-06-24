@@ -88,6 +88,12 @@ app.use('/api/vendors', vendorsRouter);
 app.use('/api/calls', callsRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 
+// ── 404 JSON handler for unmatched /api/* routes ───────────────────────
+// Must come BEFORE the React catch-all so API routes never return index.html
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.originalUrl}` });
+});
+
 // ── ரியாக்ட் ரவுட்டிங் ஹேண்ட்லர் (React SPA Routing Fix) ───────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
