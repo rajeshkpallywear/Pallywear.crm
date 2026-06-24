@@ -1,7 +1,7 @@
-require('dotenv').config();
+require('dotenv').config(); // 🛠️ 'Require' என்பது சிறிய எழுத்தாக மாற்றப்பட்டது
 const express = require('express');
 const cors = require('cors');
-const path = require('path'); // static files கையாள்வதற்காக புதிதாகச் சேர்க்கப்பட்டுள்ளது
+const path = require('path');
 const db = require('./db');
 
 // ── Route imports ──────────────────────────────────────────────────────
@@ -22,24 +22,24 @@ const app = express();
 // ── Middleware ─────────────────────────────────────────────────────────
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, curl)
-    // and all known Pallywear origins including localhost dev
     const allowed = [
       'http://localhost:3000',
       'http://127.0.0.1:3000',
       'https://pallywear.in',
       'https://www.pallywear.in'
     ];
-    if (!origin || allowed.includes(origin)) return callback(null, true);
-    callback(null, true); // allow all in production — API is auth-protected via JWT
+    if (!origin || allowed.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Production-ல் அலோவ் செய்ய 
   },
   credentials: true
 }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// 🔥 1. பிரண்ட்-எண்ட் பில்ட் ஃபைல்களை (React Dist/Public) எக்ஸ்பிரஸ் சர்வரில் இணைத்தல்
-// உங்களுடைய Vite பில்ட் ஃபைல்களை cPanel-ல் 'public' என்ற ஃபோல்டரில் போட்டிருந்தால் 'public' என்றே வைக்கவும்
+// ரியாக்ட் பிரண்ட்-எண்ட் பில்ட் ஃபைல்களை இணைத்தல்
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Health check ───────────────────────────────────────────────────────
@@ -88,8 +88,7 @@ app.use('/api/vendors', vendorsRouter);
 app.use('/api/calls', callsRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 
-// 🔥 2. ரியாக்ட் ரவுட்டிங் ஹேண்ட்லர் (React SPA Routing Fix)
-// API அல்லாத மற்ற அனைத்து ரெக்வஸ்டுகளுக்கும் index.html ஃபைலையே அனுப்ப வேண்டும்
+// ── ரியாக்ட் ரவுட்டிங் ஹேண்ட்லர் (React SPA Routing Fix) ───────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -101,8 +100,8 @@ app.use((err, req, res, next) => {
 });
 
 // ── Start Server ───────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`\n🚀 Pallywear CRM API running on http://localhost:${PORT}`);
-  console.log(`📋 Health check: http://localhost:${PORT}/api/health\n`);
+// GoDaddy Cloud / PaaS-க்குத் தேவையான process.env.PORT-ஐ முதன்மையாக மாற்றி அமைத்துள்ளேன் 
+const port = process.env.PORT || 5000;
+app.listen(port, () => {
+  console.log(`\n🚀 Pallywear CRM API running on port ${port}`);
 });
