@@ -78,4 +78,61 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
+// ── PUT /api/calls/:id ──────────────────────────────────────────────────
+router.put('/:id', authenticateToken, async (req, res) => {
+  const callId = req.params.id;
+  const { caller, lead_id, lead_name, outcome, notes, call_time, call_date } = req.body;
+
+  try {
+    const [[callObj]] = await db.execute('SELECT * FROM calls WHERE id = ?', [callId]);
+    if (!callObj) return res.status(404).json({ error: 'Call log not found' });
+
+    await db.execute(
+      `UPDATE calls SET
+        caller = ?, lead_id = ?, lead_name = ?, outcome = ?, notes = ?, call_time = ?, call_date = ?
+       WHERE id = ?`,
+      [
+        caller || callObj.caller,
+        lead_id !== undefined ? lead_id : callObj.lead_id,
+        lead_name !== undefined ? lead_name : callObj.lead_name,
+        outcome || callObj.outcome,
+        notes !== undefined ? notes : callObj.notes,
+        call_time !== undefined ? call_time : callObj.call_time,
+        call_date !== undefined ? call_date : callObj.call_date,
+        callId
+      ]
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Telecaller', `Call log ${callId} updated by Admin.`]);
+    } catch (_) {}
+
+    const [[updated]] = await db.execute('SELECT * FROM calls WHERE id = ?', [callId]);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/calls/:id ───────────────────────────────────────────────
+router.delete('/:id', authenticateToken, async (req, res) => {
+  const callId = req.params.id;
+  try {
+    const [[callObj]] = await db.execute('SELECT * FROM calls WHERE id = ?', [callId]);
+    if (!callObj) return res.status(404).json({ error: 'Call log not found' });
+
+    await db.execute('DELETE FROM calls WHERE id = ?', [callId]);
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Telecaller', `Call log ${callId} deleted by Admin.`]);
+    } catch (_) {}
+
+    res.json({ message: 'Call log deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

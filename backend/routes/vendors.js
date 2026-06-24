@@ -55,4 +55,141 @@ router.post('/purchase-orders', authenticateToken, async (req, res) => {
   }
 });
 
+// ── POST /api/vendors ──────────────────────────────────────────────────
+router.post('/', authenticateToken, async (req, res) => {
+  const { name, category, rating, active_orders, material_price } = req.body;
+  if (!name) return res.status(400).json({ error: 'Vendor name is required' });
+
+  const id = `VND-${Math.floor(100 + Math.random() * 900)}`;
+
+  try {
+    await db.execute(
+      `INSERT INTO vendors (id, name, category, rating, active_orders, material_price)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, name, category || '', parseFloat(rating) || 0.0, parseInt(active_orders) || 0, material_price || '']
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Vendor', `Vendor ${name} (${id}) added by Admin.`]);
+    } catch (_) {}
+
+    const [[vendor]] = await db.execute('SELECT * FROM vendors WHERE id = ?', [id]);
+    res.status(201).json(vendor);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /api/vendors/:id ───────────────────────────────────────────────
+router.put('/:id', authenticateToken, async (req, res) => {
+  const vendorId = req.params.id;
+  const { name, category, rating, active_orders, material_price } = req.body;
+
+  try {
+    const [[vendor]] = await db.execute('SELECT * FROM vendors WHERE id = ?', [vendorId]);
+    if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
+
+    await db.execute(
+      `UPDATE vendors SET
+        name = ?, category = ?, rating = ?, active_orders = ?, material_price = ?
+       WHERE id = ?`,
+      [
+        name || vendor.name,
+        category !== undefined ? category : vendor.category,
+        rating !== undefined ? parseFloat(rating) : vendor.rating,
+        active_orders !== undefined ? parseInt(active_orders) : vendor.active_orders,
+        material_price !== undefined ? material_price : vendor.material_price,
+        vendorId
+      ]
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Vendor', `Vendor ${vendorId} updated by Admin.`]);
+    } catch (_) {}
+
+    const [[updated]] = await db.execute('SELECT * FROM vendors WHERE id = ?', [vendorId]);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/vendors/:id ────────────────────────────────────────────
+router.delete('/:id', authenticateToken, async (req, res) => {
+  const vendorId = req.params.id;
+  try {
+    const [[vendor]] = await db.execute('SELECT * FROM vendors WHERE id = ?', [vendorId]);
+    if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
+
+    await db.execute('DELETE FROM vendors WHERE id = ?', [vendorId]);
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Vendor', `Vendor ${vendor.name} (${vendorId}) deleted by Admin.`]);
+    } catch (_) {}
+
+    res.json({ message: 'Vendor deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /api/vendors/purchase-orders/:id ──────────────────────────────
+router.put('/purchase-orders/:id', authenticateToken, async (req, res) => {
+  const poId = req.params.id;
+  const { vendor, items, total_cost, totalCost, status, po_date } = req.body;
+  const resolvedCost = total_cost !== undefined ? total_cost : totalCost;
+
+  try {
+    const [[po]] = await db.execute('SELECT * FROM purchase_orders WHERE id = ?', [poId]);
+    if (!po) return res.status(404).json({ error: 'Purchase Order not found' });
+
+    await db.execute(
+      `UPDATE purchase_orders SET
+        vendor = ?, items = ?, total_cost = ?, status = ?, po_date = ?
+       WHERE id = ?`,
+      [
+        vendor || po.vendor,
+        items !== undefined ? items : po.items,
+        resolvedCost !== undefined ? parseFloat(resolvedCost) : po.total_cost,
+        status || po.status,
+        po_date || po.po_date,
+        poId
+      ]
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Vendor', `Purchase Order ${poId} updated by Admin.`]);
+    } catch (_) {}
+
+    const [[updated]] = await db.execute('SELECT * FROM purchase_orders WHERE id = ?', [poId]);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/vendors/purchase-orders/:id ───────────────────────────
+router.delete('/purchase-orders/:id', authenticateToken, async (req, res) => {
+  const poId = req.params.id;
+  try {
+    const [[po]] = await db.execute('SELECT * FROM purchase_orders WHERE id = ?', [poId]);
+    if (!po) return res.status(404).json({ error: 'Purchase Order not found' });
+
+    await db.execute('DELETE FROM purchase_orders WHERE id = ?', [poId]);
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Vendor', `Purchase Order ${poId} deleted by Admin.`]);
+    } catch (_) {}
+
+    res.json({ message: 'Purchase Order deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

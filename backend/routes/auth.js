@@ -144,4 +144,55 @@ router.get('/users', authenticateToken, async (req, res) => {
   }
 });
 
+// ── PUT /api/auth/users/:id ────────────────────────────────────────────
+router.put('/users/:id', authenticateToken, async (req, res) => {
+  const { name, email, password, role } = req.body;
+  const userId = req.params.id;
+
+  try {
+    const [[user]] = await db.execute('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let updatedPassword = user.password;
+    if (password && password.trim() !== '') {
+      updatedPassword = await bcrypt.hash(password, 10);
+    }
+
+    await db.execute(
+      'UPDATE users SET name = ?, email = ?, password = ?, role = ? WHERE id = ?',
+      [name || user.name, email ? email.toLowerCase().trim() : user.email, updatedPassword, role || user.role, userId]
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['System', `User ${userId} updated by Admin.`]);
+    } catch (_) {}
+
+    res.json({ id: userId, name: name || user.name, email: email || user.email, role: role || user.role });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/auth/users/:id ─────────────────────────────────────────
+router.delete('/users/:id', authenticateToken, async (req, res) => {
+  const userId = req.params.id;
+  try {
+    const [[user]] = await db.execute('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    await db.execute('DELETE FROM users WHERE id = ?', [userId]);
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['System', `User ${user.name} (${userId}) deleted by Admin.`]);
+    } catch (_) {}
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = { router, authenticateToken };
+

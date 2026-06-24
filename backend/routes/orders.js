@@ -176,4 +176,79 @@ router.post('/:id/delivery-complete', authenticateToken, async (req, res) => {
   }
 });
 
+// ── PUT /api/orders/:id ────────────────────────────────────────────────
+router.put('/:id', authenticateToken, async (req, res) => {
+  const orderId = req.params.id;
+  const {
+    clientName, customerPhone, customerAddress, category, quantity, details, sizeBreakdown,
+    totalAmount, advancePay, balanceAmount, gstAmount, discountAmount, shippingCharges,
+    status, isUrgent, notes, marketing_notes
+  } = req.body;
+
+  try {
+    const [[order]] = await db.execute('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    await db.execute(
+      `UPDATE orders SET
+        customerName = ?, customerPhone = ?, customerAddress = ?, category = ?,
+        quantity = ?, details = ?, sizeBreakdown = ?, totalAmount = ?, advancePay = ?,
+        balanceAmount = ?, gstAmount = ?, discountAmount = ?, shippingCharges = ?,
+        status = ?, isUrgent = ?, notes = ?, marketing_notes = ?, updatedAt = ?
+       WHERE id = ?`,
+      [
+        clientName || customerName || order.customerName,
+        customerPhone !== undefined ? customerPhone : order.customerPhone,
+        customerAddress !== undefined ? customerAddress : order.customerAddress,
+        category || order.category,
+        quantity !== undefined ? quantity : order.quantity,
+        details !== undefined ? details : order.details,
+        sizeBreakdown !== undefined ? sizeBreakdown : order.sizeBreakdown,
+        totalAmount !== undefined ? totalAmount : order.totalAmount,
+        advancePay !== undefined ? advancePay : order.advancePay,
+        balanceAmount !== undefined ? balanceAmount : order.balanceAmount,
+        gstAmount !== undefined ? gstAmount : order.gstAmount,
+        discountAmount !== undefined ? discountAmount : order.discountAmount,
+        shippingCharges !== undefined ? shippingCharges : order.shippingCharges,
+        status || order.status,
+        isUrgent !== undefined ? (isUrgent ? 1 : 0) : order.isUrgent,
+        notes !== undefined ? notes : order.notes,
+        marketing_notes !== undefined ? marketing_notes : order.marketing_notes,
+        Date.now(),
+        orderId
+      ]
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Order Management', `Order ${orderId} updated by Admin.`]);
+    } catch (_) {}
+
+    const [[updatedOrder]] = await db.execute('SELECT * FROM orders WHERE id = ?', [orderId]);
+    res.json(updatedOrder);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/orders/:id ─────────────────────────────────────────────
+router.delete('/:id', authenticateToken, async (req, res) => {
+  const orderId = req.params.id;
+  try {
+    const [[order]] = await db.execute('SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    await db.execute('DELETE FROM orders WHERE id = ?', [orderId]);
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Order Management', `Order ${orderId} deleted by Admin.`]);
+    } catch (_) {}
+
+    res.json({ message: 'Order deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -81,4 +81,60 @@ router.patch('/:id/pay', authenticateToken, async (req, res) => {
   }
 });
 
+// ── PUT /api/invoices/:id ──────────────────────────────────────────────
+router.put('/:id', authenticateToken, async (req, res) => {
+  const invoiceId = req.params.id;
+  const { order_id, type, client, amount, status, description } = req.body;
+
+  try {
+    const [[invoice]] = await db.execute('SELECT * FROM invoices WHERE id = ?', [invoiceId]);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+
+    await db.execute(
+      `UPDATE invoices SET
+        order_id = ?, type = ?, client = ?, amount = ?, status = ?, description = ?
+       WHERE id = ?`,
+      [
+        order_id !== undefined ? order_id : invoice.order_id,
+        type || invoice.type,
+        client || invoice.client,
+        amount !== undefined ? parseFloat(amount) : invoice.amount,
+        status || invoice.status,
+        description !== undefined ? description : invoice.description,
+        invoiceId
+      ]
+    );
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Account', `Invoice ${invoiceId} updated by Admin.`]);
+    } catch (_) {}
+
+    const [[updated]] = await db.execute('SELECT * FROM invoices WHERE id = ?', [invoiceId]);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/invoices/:id ───────────────────────────────────────────
+router.delete('/:id', authenticateToken, async (req, res) => {
+  const invoiceId = req.params.id;
+  try {
+    const [[invoice]] = await db.execute('SELECT * FROM invoices WHERE id = ?', [invoiceId]);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+
+    await db.execute('DELETE FROM invoices WHERE id = ?', [invoiceId]);
+
+    try {
+      await db.execute('INSERT INTO audit_logs (role, message) VALUES (?, ?)',
+        ['Account', `Invoice ${invoiceId} deleted by Admin.`]);
+    } catch (_) {}
+
+    res.json({ message: 'Invoice deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
