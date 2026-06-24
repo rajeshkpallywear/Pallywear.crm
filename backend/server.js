@@ -39,9 +39,6 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ரியாக்ட் பிரண்ட்-எண்ட் பில்ட் ஃபைல்களை இணைத்தல்
-app.use(express.static(path.join(__dirname, 'public')));
-
 // ── Health check ───────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({
@@ -89,12 +86,14 @@ app.use('/api/calls', callsRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 
 // ── 404 JSON handler for unmatched /api/* routes ───────────────────────
-// Must come BEFORE the React catch-all so API routes never return index.html
-app.use('/api/*', (req, res) => {
-  res.status(404).json({ error: `API route not found: ${req.originalUrl}` });
+// Must come BEFORE the static/SPA fallback so API routes never return index.html
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
 });
 
-// ── ரியாக்ட் ரவுட்டிங் ஹேண்ட்லர் (React SPA Routing Fix) ───────────────────
+// ── Static files + React SPA (AFTER all API routes) ───────────────────
+// express.static is placed here so it never intercepts /api/* requests
+app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
