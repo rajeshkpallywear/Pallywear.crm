@@ -1,5 +1,12 @@
+Options -MultiViews
 RewriteEngine On
 RewriteBase /
+
+# ── API routes: pass through unchanged (handled by Node.js via cPanel App) ──
+RewriteCond %{REQUEST_URI} ^/api/ [NC]
+RewriteRule ^ - [L]
+
+# ── React SPA: serve index.html for all other non-file/non-dir routes ───────
 RewriteRule ^index\.html$ - [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
