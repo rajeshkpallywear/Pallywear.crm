@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path'); // static files கையாள்வதற்காக புதிதாகச் சேர்க்கப்பட்டுள்ளது
 const db = require('./db');
 
 // ── Route imports ──────────────────────────────────────────────────────
@@ -26,6 +27,10 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// 🔥 1. பிரண்ட்-எண்ட் பில்ட் ஃபைல்களை (React Dist/Public) எக்ஸ்பிரஸ் சர்வரில் இணைத்தல்
+// உங்களுடைய Vite பில்ட் ஃபைல்களை cPanel-ல் 'public' என்ற ஃபோல்டரில் போட்டிருந்தால் 'public' என்றே வைக்கவும்
+app.use(express.static(path.join(__dirname, 'public')));
+
 // ── Health check ───────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({
@@ -47,6 +52,7 @@ app.get('/test-db', async (req, res) => {
     res.status(500).json(err);
   }
 });
+
 app.get('/users', async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM users');
@@ -58,7 +64,7 @@ app.get('/users', async (req, res) => {
   }
 });
 
-// ── Routes ─────────────────────────────────────────────────────────────
+// ── API Routes ─────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
 app.use('/api/leads', leadsRouter);
 app.use('/api/orders', ordersRouter);
@@ -71,9 +77,10 @@ app.use('/api/vendors', vendorsRouter);
 app.use('/api/calls', callsRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 
-// ── 404 Handler ────────────────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
+// 🔥 2. ரியாக்ட் ரவுட்டிங் ஹேண்ட்லர் (React SPA Routing Fix)
+// API அல்லாத மற்ற அனைத்து ரெக்வஸ்டுகளுக்கும் index.html ஃபைலையே அனுப்ப வேண்டும்
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ── Global Error Handler ───────────────────────────────────────────────
