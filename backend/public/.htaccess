@@ -1,0 +1,8 @@
+Options -MultiViews
+RewriteEngine On
+
+# ── React SPA: serve index.html for all non-file routes ─────────────────
+# (API routes are handled by the Node.js app directly — no proxy needed)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]

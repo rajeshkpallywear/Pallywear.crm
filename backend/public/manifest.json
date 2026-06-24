@@ -1,0 +1,15 @@
+{
+  "short_name": "Pallywear CRM",
+  "name": "Pallywear CRM Gifting Solutions",
+  "icons": [
+    {
+      "src": "logo.png",
+      "type": "image/png",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#5B4EE8",
+  "background_color": "#ffffff"
+}
