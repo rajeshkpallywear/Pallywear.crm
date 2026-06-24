@@ -1,8 +1,16 @@
 Options -MultiViews
 RewriteEngine On
 
-# ── React SPA: serve index.html for all non-file routes ─────────────────
-# (API routes are handled by the Node.js app directly — no proxy needed)
+# ── Reverse Proxy: API requests → Node.js on port 5000 ──────────────────
+# Uses ProxyPass (different from [P] RewriteRule — works on more cPanel hosts)
+<IfModule mod_proxy.c>
+  ProxyRequests Off
+  ProxyPass /api/ http://127.0.0.1:5000/api/
+  ProxyPassReverse /api/ http://127.0.0.1:5000/api/
+</IfModule>
+
+# ── React SPA: only rewrite non-API, non-file routes to index.html ───────
+RewriteCond %{REQUEST_URI} !^/api/ [NC]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.html [L]
