@@ -3,8 +3,8 @@
 -- Run this file to create all required tables
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS username_pallywearcrm;
-USE username_pallywearcrm;
+CREATE DATABASE IF NOT EXISTS pallywearcrm;
+USE pallywearcrm;
 
 -- ============================================================
 -- USERS TABLE
