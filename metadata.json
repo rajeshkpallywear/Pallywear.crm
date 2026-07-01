@@ -1,0 +1,10 @@
+{
+  "name": "Pallywear ERP",
+  "description": "Enterprise Resource Planning system for Pallywear, featuring end-to-end order tracking, lead management, and specialized dashboards for Accounts, Production, and Order Management teams.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
